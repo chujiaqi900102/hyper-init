@@ -30,6 +30,12 @@ desktop_menu() {
 }
 
 install_chrome() {
+    # Dependency: wget
+    if ! command -v wget &> /dev/null; then
+        warn "wget not found. Installing..."
+        install_pkg "wget"
+    fi
+
     if [ "$PKG_MANAGER" == "apt" ]; then
         wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
         sudo apt install ./google-chrome-stable_current_amd64.deb -y
@@ -41,6 +47,15 @@ install_chrome() {
 }
 
 install_vscode() {
+    # Dependency: wget, gpg
+    local deps=(wget gpg)
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            warn "$dep not found. Installing..."
+            install_pkg "$dep"
+        fi
+    done
+
     if [ "$PKG_MANAGER" == "apt" ]; then
         wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg
         sudo install -D -o root -g root -m 644 packages.microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
@@ -57,6 +72,15 @@ install_vscode() {
 }
 
 install_fonts() {
+    # Dependency: wget, unzip
+    local deps=(wget unzip)
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            warn "$dep not found. Installing..."
+            install_pkg "$dep"
+        fi
+    done
+
     info "Installing Hack Nerd Font..."
     mkdir -p ~/.local/share/fonts
     cd ~/.local/share/fonts

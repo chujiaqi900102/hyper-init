@@ -46,9 +46,21 @@ install_claude() {
     info "Installing Claude Code..."
     # Requires Node.js
     if ! command -v node &> /dev/null; then
-        warn "Node.js is required but not found. Please install it from the Dev menu first."
-        read -n 1 -s -r -p "Press any key to continue..."
-        return
+        warn "Node.js is required but not found."
+        read -p "Install Node.js (via NVM) now? [Y/n] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ || -z $REPLY ]]; then
+            install_node
+            # Check again
+            if ! command -v node &> /dev/null; then
+                # Reload nvm if needed or check why
+                export NVM_DIR="$HOME/.nvm"
+                [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            fi
+        else
+            error "Cannot install Claude Code without Node.js."
+            return 1
+        fi
     fi
     
     run_task "Installing @anthropic-ai/claude-code" npm install -g @anthropic-ai/claude-code
@@ -63,8 +75,20 @@ install_claude() {
 install_openclaw() {
     info "Installing OpenClaw..."
      if ! command -v node &> /dev/null; then
-        warn "Node.js is required but not found. Please install it from the Dev menu first."
-        return
+        warn "Node.js is required but not found."
+        read -p "Install Node.js (via NVM) now? [Y/n] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ || -z $REPLY ]]; then
+            install_node
+            # Check again
+            if ! command -v node &> /dev/null; then
+                export NVM_DIR="$HOME/.nvm"
+                [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            fi
+        else
+            error "Cannot install OpenClaw without Node.js."
+            return 1
+        fi
     fi
 
     run_task "Installing OpenClaw" npm install -g openclaw@latest

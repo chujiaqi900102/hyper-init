@@ -78,6 +78,12 @@ install_omz() {
 }
 
 install_p10k() {
+    # Dependency check: git
+    if ! command -v git &> /dev/null; then
+        warn "Git is required but not found. Installing..."
+        install_pkg "git"
+    fi
+
     local theme_dir="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k"
     if [ -d "$theme_dir" ]; then
         warn "Powerlevel10k already installed."
@@ -90,6 +96,12 @@ install_p10k() {
 }
 
 install_zsh_plugins() {
+    # Dependency check: git
+    if ! command -v git &> /dev/null; then
+        warn "Git is required but not found. Installing..."
+        install_pkg "git"
+    fi
+
     local plugin_dir="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins"
     
     # Auto Suggestions
