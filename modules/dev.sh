@@ -55,6 +55,15 @@ install_docker() {
         bash <(curl -sSL https://linuxmirrors.cn/docker.sh)
     fi
     success "Docker installation complete."
+    if command -v docker &> /dev/null; then
+        echo -e "${NEON_CYAN}Docker Version:${RESET} $(docker --version)"
+    fi
+    if command -v docker-compose &> /dev/null; then
+        echo -e "${NEON_CYAN}Docker Compose Version:${RESET} $(docker-compose --version)"
+    else
+        # newer docker has compose as plugin
+        echo -e "${NEON_CYAN}Docker Compose (Plugin):${RESET} $(docker compose version 2>/dev/null)"
+    fi
 }
 
 install_podman() {
@@ -68,7 +77,8 @@ install_podman() {
         install_pkg "podman-docker"
     fi
     
-    success "Podman installed. Version: $(podman --version)"
+    success "Podman installed."
+    echo -e "${NEON_CYAN}Podman Version:${RESET} $(podman --version)"
 }
 
 install_lxc() {
@@ -92,6 +102,12 @@ install_lxc() {
     fi
     
     success "LXC/LXD installed."
+    if command -v lxc &> /dev/null; then
+        echo -e "${NEON_CYAN}LXC Version:${RESET} $(lxc --version)"
+    fi
+    if command -v lxd &> /dev/null; then
+         echo -e "${NEON_CYAN}LXD Version:${RESET} $(lxd --version)"
+    fi
 }
 
 install_node() {
@@ -103,7 +119,11 @@ install_node() {
     
     nvm install --lts
     nvm use --lts
-    success "Node.js $(node -v) installed."
+    success "Node.js Environment installed."
+    
+    echo -e "${NEON_CYAN}Node Version:${RESET} $(node -v)"
+    echo -e "${NEON_CYAN}NPM Version:${RESET} $(npm -v)"
+    echo -e "${NEON_CYAN}NVM Version:${RESET} $(nvm --version)"
 }
 
 install_python() {
@@ -112,15 +132,29 @@ install_python() {
     curl -LsSf https://astral.sh/uv/install.sh | sh
     success "UV installed."
     
-    # Optionally: install Miniconda? User might prefer system python + venv.
-    # For now, stick to simple tools.
+    # Reload profile or add to path manually just to check version if needed
+    source "$HOME/.cargo/env" 2>/dev/null || true
+    
+    if command -v uv &> /dev/null; then
+         echo -e "${NEON_CYAN}uv Version:${RESET} $(uv --version)"
+    fi
+    if command -v python3 &> /dev/null; then
+        echo -e "${NEON_CYAN}System Python3:${RESET} $(python3 --version)"
+    fi
 }
 
 install_rust() {
     info "Installing Rust via Rustup..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     source "$HOME/.cargo/env"
-    success "Rust $(rustc --version) installed."
+    success "Rust installed."
+    
+    if command -v rustc &> /dev/null; then
+        echo -e "${NEON_CYAN}rustc Version:${RESET} $(rustc --version)"
+    fi
+    if command -v cargo &> /dev/null; then
+        echo -e "${NEON_CYAN}cargo Version:${RESET} $(cargo --version)"
+    fi
 }
 
 install_go() {
@@ -140,4 +174,7 @@ install_go() {
         install_pkg "go"
     fi
     success "Go installed."
+    if command -v go &> /dev/null; then
+        echo -e "${NEON_CYAN}Go Version:${RESET} $(go version)"
+    fi
 }
