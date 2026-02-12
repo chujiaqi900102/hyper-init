@@ -39,7 +39,13 @@ dev_menu() {
 
 install_docker() {
     info "Launching LinuxMirrors Docker Installation Script..."
-    bash <(curl -sSL https://linuxmirrors.cn/docker.sh)
+    if [ "$EUID" -ne 0 ]; then
+        warn "This script requires a root login shell environment (sudo -i)."
+        info "Switching context to execute..."
+        sudo -i bash -c "bash <(curl -sSL https://linuxmirrors.cn/docker.sh)"
+    else
+        bash <(curl -sSL https://linuxmirrors.cn/docker.sh)
+    fi
     success "Docker installation complete."
 }
 

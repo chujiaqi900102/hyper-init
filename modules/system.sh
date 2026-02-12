@@ -35,8 +35,14 @@ system_menu() {
 
 change_mirrors() {
     info "Launching LinuxMirrors.cn script..."
-    # We use the official script from SuperManito
-    bash <(curl -sSL https://linuxmirrors.cn/main.sh)
+    # We use the official script from SuperManito which requires sudo -i context
+    if [ "$EUID" -ne 0 ]; then
+         warn "This script requires a root login shell environment (sudo -i)."
+         info "Switching context to execute..."
+         sudo -i bash -c "bash <(curl -sSL https://linuxmirrors.cn/main.sh)"
+    else
+         bash <(curl -sSL https://linuxmirrors.cn/main.sh)
+    fi
     success "Mirror configuration completed."
     read -n 1 -s -r -p "Press any key to continue..."
 }
