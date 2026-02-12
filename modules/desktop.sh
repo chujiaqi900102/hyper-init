@@ -142,15 +142,20 @@ install_edge() {
         fi
     done
 
-    local gpg_file="microsoft-edge.gpg"
-    if ! curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > "$gpg_file"; then
-        error "Failed to download or add Microsoft GPG key for Edge."
+    # Use same key path as VS Code to avoid "Conflicting values set for option Signed-By" when both are installed
+    local key_path="/etc/apt/keyrings/packages.microsoft.gpg"
+    if [ ! -f "$key_path" ]; then
+        local gpg_file="microsoft-edge.gpg"
+        if ! curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > "$gpg_file"; then
+            error "Failed to download or add Microsoft GPG key for Edge."
+            rm -f "$gpg_file"
+            return 1
+        fi
+        sudo install -D -o root -g root -m 644 "$gpg_file" "$key_path" || { rm -f "$gpg_file"; return 1; }
         rm -f "$gpg_file"
-        return 1
     fi
-    sudo install -D -o root -g root -m 644 "$gpg_file" /etc/apt/trusted.gpg.d/microsoft-edge.gpg || { rm -f "$gpg_file"; return 1; }
-    rm -f "$gpg_file"
-    sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/edge stable main" > /etc/apt/sources.list.d/microsoft-edge.list' || return 1
+    printf '%s\n' "deb [arch=amd64 signed-by=$key_path] https://packages.microsoft.com/repos/edge stable main" | \
+        sudo tee /etc/apt/sources.list.d/microsoft-edge.list > /dev/null
 
     sudo apt update || return 1
     if ! sudo apt install -y microsoft-edge-stable; then

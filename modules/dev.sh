@@ -142,7 +142,9 @@ install_docker() {
         return
     fi
     
-    echo "deb [arch=$arch signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] $docker_repo_url $codename stable" | \
+    # Remove trailing slash from repo URL to avoid malformed entry (Component) in docker.list
+    docker_repo_url="${docker_repo_url%/}"
+    printf '%s\n' "deb [arch=$arch signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] $docker_repo_url $codename stable" | \
         sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     
     success "Docker repository configured"

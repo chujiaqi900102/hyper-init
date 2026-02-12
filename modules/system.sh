@@ -253,22 +253,33 @@ repair_apt_sources() {
     fi
 
     # Fix conflicting Microsoft Signed-By: use single key path /etc/apt/keyrings/packages.microsoft.gpg
-    if echo "$update_out" | grep -q "Signed-By.*microsoft\|packages.microsoft.com.*Signed-By"; then
-        local f
-        for f in /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
-            [ -f "$f" ] || continue
-            if grep -q "packages.microsoft.com" "$f" 2>/dev/null; then
-                if grep -q "/usr/share/keyrings/microsoft.gpg" "$f" 2>/dev/null; then
-                    sudo sed -i 's|signed-by=/usr/share/keyrings/microsoft.gpg|signed-by=/etc/apt/keyrings/packages.microsoft.gpg|g' "$f"
-                    # Ensure key exists in keyrings; copy from old location if present
-                    if [ ! -f /etc/apt/keyrings/packages.microsoft.gpg ] && [ -f /usr/share/keyrings/microsoft.gpg ]; then
-                        sudo install -D -o root -g root -m 644 /usr/share/keyrings/microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
-                    fi
-                    success "Updated $(basename "$f") to use Signed-By=/etc/apt/keyrings/packages.microsoft.gpg"
-                    repaired=1
-                fi
-            fi
-        done
+    local need_key=
+    if echo "$update_out" | grep -q "Signed-By.*microsoft\|packages.microsoft.com.*Signed-By\|Conflicting values set for option Signed-By"; then
+        need_key=1
+    fi
+    local f
+    for f in /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+        [ -f "$f" ] || continue
+        grep -q "packages.microsoft.com" "$f" 2>/dev/null || continue
+        if grep -q "/usr/share/keyrings/microsoft.gpg" "$f" 2>/dev/null; then
+            sudo sed -i 's|signed-by=/usr/share/keyrings/microsoft.gpg|signed-by=/etc/apt/keyrings/packages.microsoft.gpg|g' "$f"
+            need_key=1
+            success "Updated $(basename "$f") to use Signed-By=/etc/apt/keyrings/packages.microsoft.gpg"
+            repaired=1
+        elif ! grep -q "signed-by=" "$f" 2>/dev/null; then
+            # e.g. old microsoft-edge.list has no signed-by → add it to avoid conflict with vscode.list
+            sudo sed -i 's/\[arch=\([^]]*\)\]/[arch=\1 signed-by=\/etc\/apt\/keyrings\/packages.microsoft.gpg]/' "$f"
+            need_key=1
+            success "Added Signed-By to $(basename "$f") for packages.microsoft.com"
+            repaired=1
+        fi
+    done
+    if [ -n "$need_key" ] && [ ! -f /etc/apt/keyrings/packages.microsoft.gpg ]; then
+        if [ -f /usr/share/keyrings/microsoft.gpg ]; then
+            sudo install -D -o root -g root -m 644 /usr/share/keyrings/microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
+        elif [ -f /etc/apt/trusted.gpg.d/microsoft-edge.gpg ]; then
+            sudo install -D -o root -g root -m 644 /etc/apt/trusted.gpg.d/microsoft-edge.gpg /etc/apt/keyrings/packages.microsoft.gpg
+        fi
     fi
 
     if [ $repaired -eq 1 ]; then
