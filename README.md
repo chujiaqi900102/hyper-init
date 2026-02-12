@@ -35,17 +35,15 @@ bash main.sh
 ```
 
 ### 2. One-Line Install (Bootstrap)
-*(Requires hosting the script remotely)*
+**Debian/Ubuntu/WSL (Recommended for minimal systems):**
+```bash
+sudo apt update && sudo apt install -y curl && bash <(curl -sL https://raw.githubusercontent.com/chujiaqi900102/hyper-init/main/bootstrap.sh)
+```
 
+**Standard (if `curl` is already installed):**
 ```bash
 bash <(curl -sL https://raw.githubusercontent.com/chujiaqi900102/hyper-init/main/bootstrap.sh)
 ```
-
-*Note: If `curl` is not installed, install it first:*
-```bash
-sudo apt update && sudo apt install -y curl  # Debian/Ubuntu
-sudo dnf install -y curl                     # RHEL/CentOS
-sudo pacman -S curl                          # Arch Linux
 ```
 
 ## 📂 Project Structure
