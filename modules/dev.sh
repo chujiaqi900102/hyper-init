@@ -110,15 +110,37 @@ install_docker() {
     
     info "Selected Docker CE source: $docker_repo_url"
     
-    # Install prerequisites
-    run_task "Installing prerequisites" sudo apt-get install -y ca-certificates curl gnupg lsb-release
+    # Check if apt can read sources (e.g. avoid failing later due to conflicting Signed-By)
+    if ! sudo apt-get update -qq 2>/dev/null; then
+        warn "apt-get update failed (e.g. malformed docker.list or conflicting Microsoft Signed-By). Attempting repair..."
+        repair_apt_sources --quiet
+        if ! sudo apt-get update -qq 2>/dev/null; then
+            error "Please run: System Initialization → Repair APT Sources, then try again."
+            read -n 1 -s -r -p "Press any key to continue..."
+            return 1
+        fi
+    fi
+    
+    # Install prerequisites (ca-certificates, curl, gnupg only; codename from /etc/os-release)
+    run_task "Installing prerequisites" sudo apt-get install -y ca-certificates curl gnupg
     
     # Add Docker GPG key
     run_task "Adding Docker GPG key" bash -c "curl -fsSL $docker_gpg_url | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg"
     
-    # Add Docker repository
+    # Add Docker repository (codename from /etc/os-release so we don't require lsb-release)
     local arch=$(dpkg --print-architecture)
-    local codename=$(lsb_release -cs)
+    local codename=""
+    if [ -r /etc/os-release ]; then
+        codename=$(grep -E '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2- | tr -d '"')
+    fi
+    if [ -z "$codename" ] && command -v lsb_release &>/dev/null; then
+        codename=$(lsb_release -cs)
+    fi
+    if [ -z "$codename" ]; then
+        error "Could not detect distribution codename (e.g. bookworm). Install lsb-release or set VERSION_CODENAME in /etc/os-release."
+        read -n 1 -s -r -p "Press any key to continue..."
+        return
+    fi
     
     echo "deb [arch=$arch signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] $docker_repo_url $codename stable" | \
         sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
@@ -131,10 +153,12 @@ install_docker() {
     # Install Docker
     run_task "Installing Docker Engine" sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
     
-    # Add user to docker group
-    if ! groups "$USER" | grep -q docker; then
-        run_task "Adding $USER to docker group" sudo usermod -aG docker "$USER"
-        warn "You need to logout and login again for docker group changes to apply."
+    # Add user to docker group and configure mirror only if Docker was installed
+    if command -v docker &>/dev/null; then
+        if ! groups "$USER" | grep -q docker; then
+            run_task "Adding $USER to docker group" sudo usermod -aG docker "$USER"
+            warn "You need to logout and login again for docker group changes to apply."
+        fi
     fi
     
     # Configure Docker Hub registry mirror
@@ -172,7 +196,11 @@ install_docker() {
 }
 EOF
         
-        run_task "Restarting Docker service" sudo systemctl restart docker
+        if command -v docker &>/dev/null && systemctl is-active --quiet docker 2>/dev/null; then
+            run_task "Restarting Docker service" sudo systemctl restart docker
+        elif command -v docker &>/dev/null; then
+            run_task "Starting Docker service" sudo systemctl start docker
+        fi
         success "Docker Hub registry mirror configured"
     fi
     
@@ -192,15 +220,29 @@ EOF
 
 install_podman() {
     info "Installing Podman..."
+
+    # On Debian/Ubuntu, ensure APT sources are valid before installing (fixes broken docker.list / Microsoft Signed-By)
+    if [ "$PKG_MANAGER" = "apt" ]; then
+        if ! sudo apt-get update -qq 2>/dev/null; then
+            warn "APT update failed (e.g. malformed docker.list or conflicting Microsoft keys). Attempting repair..."
+            repair_apt_sources --quiet
+            if ! sudo apt-get update -qq 2>/dev/null; then
+                error "Please run: System Initialization → Repair APT Sources, then try again."
+                read -n 1 -s -r -p "Press any key to continue..."
+                return 1
+            fi
+        fi
+    fi
+
     install_pkg "podman"
-    
+
     # Optional: Install podman-docker to simulate docker command
     read -p "Install 'podman-docker' wrapper (allows using 'docker' command)? [Y/n] " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ || -z $REPLY ]]; then
         install_pkg "podman-docker"
     fi
-    
+
     success "Podman installed."
     echo -e "${NEON_CYAN}Podman Version:${RESET} $(podman --version)"
 }
@@ -209,6 +251,11 @@ install_lxc() {
     info "Installing LXC and LXD..."
     
     if [ "$PKG_MANAGER" == "apt" ]; then
+        # Ensure APT sources are readable (fix malformed docker.list / Microsoft Signed-By conflicts)
+        if ! sudo apt-get update -qq 2>/dev/null; then
+            warn "APT update failed (e.g. malformed docker.list or conflicting Microsoft Signed-By). Attempting repair..."
+            repair_apt_sources --quiet
+        fi
         # Ubuntu often prefers snap for lxd, but let's try apt first or snap
         if command -v snap &> /dev/null; then
             info "Installing LXD via Snap (Recommended for Ubuntu/Debian)..."

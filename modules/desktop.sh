@@ -58,12 +58,14 @@ desktop_menu() {
 }
 
 install_chrome() {
-    # Dependency: wget
+    if command -v google-chrome-stable &>/dev/null || dpkg -s google-chrome-stable &>/dev/null; then
+        success "Google Chrome is already installed."
+        return 0
+    fi
     if ! command -v wget &> /dev/null; then
         warn "wget not found. Installing..."
         install_pkg "wget" || return 1
     fi
-
     if [ "$PKG_MANAGER" != "apt" ]; then
         warn "Chrome install script only supports Debian/Ubuntu for now."
         return 1
@@ -101,6 +103,10 @@ install_chrome() {
 }
 
 install_chromium() {
+    if command -v chromium &>/dev/null || command -v chromium-browser &>/dev/null; then
+        success "Chromium is already installed."
+        return 0
+    fi
     if [ "$PKG_MANAGER" != "apt" ]; then
         warn "Chromium install only supports Debian/Ubuntu for now."
         return 1
@@ -120,6 +126,10 @@ install_chromium() {
 }
 
 install_edge() {
+    if command -v microsoft-edge-stable &>/dev/null || command -v microsoft-edge &>/dev/null || dpkg -s microsoft-edge-stable &>/dev/null; then
+        success "Microsoft Edge is already installed."
+        return 0
+    fi
     if [ "$PKG_MANAGER" != "apt" ]; then
         warn "Microsoft Edge install only supports Debian/Ubuntu for now."
         return 1
@@ -152,6 +162,10 @@ install_edge() {
 }
 
 install_vscode() {
+    if command -v code &>/dev/null; then
+        success "Visual Studio Code is already installed."
+        return 0
+    fi
     local deps=(wget gpg)
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
@@ -159,7 +173,6 @@ install_vscode() {
             install_pkg "$dep" || return 1
         fi
     done
-
     if [ "$PKG_MANAGER" != "apt" ]; then
         warn "VS Code install script only supports Debian/Ubuntu for now."
         return 1

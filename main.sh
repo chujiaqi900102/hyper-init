@@ -16,6 +16,10 @@ source "$SCRIPT_DIR/modules/ai.sh"
 source "$SCRIPT_DIR/modules/dev.sh"
 source "$SCRIPT_DIR/modules/shell.sh"
 source "$SCRIPT_DIR/modules/desktop.sh"
+source "$SCRIPT_DIR/modules/database.sh"
+source "$SCRIPT_DIR/modules/server.sh"
+source "$SCRIPT_DIR/modules/monitoring.sh"
+source "$SCRIPT_DIR/modules/virtualization.sh"
 
 # Main Execution Flow
 main() {
@@ -60,6 +64,10 @@ main() {
             "3. Shell Customization (Zsh, Oh-My-Zsh, Tools)" \
             "4. Desktop Applications (Chrome, VS Code, Fonts)" \
             "5. AI Agents (OpenCode, Claude, OpenClaw)" \
+            "6. Database (PostgreSQL, MySQL/MariaDB, Redis)" \
+            "7. Web Server (Nginx, Apache)" \
+            "8. Monitoring (Prometheus, Grafana, Node Exporter)" \
+            "9. Virtualization (QEMU/KVM, VirtualBox)" \
             "Q. Quit"
             
         case "$SELECTION" in
@@ -77,6 +85,18 @@ main() {
                 ;;
             *"AI Agents"*)
                 ai_menu
+                ;;
+            *"Database"*)
+                database_menu
+                ;;
+            *"Web Server"*)
+                server_menu
+                ;;
+            *"Monitoring"*)
+                monitoring_menu
+                ;;
+            *"Virtualization"*)
+                virtualization_menu
                 ;;
             *"Quit"*)
                 echo -e "${NEON_CYAN}  See you, Space Cowboy...${RESET}"

@@ -145,39 +145,54 @@ tool_to_pkg() {
 }
 
 install_essentials() {
+    info "Installing Essential Modern CLI Tools..."
+    # Tool descriptions (same as d980123 — one screen, one read -p)
+    declare -A tool_descriptions=(
+        ["curl"]="Transfer data with URLs (HTTP/HTTPS client)"
+        ["wget"]="Network downloader"
+        ["git"]="Version control system"
+        ["neovim"]="Modern Vim-based text editor"
+        ["btop"]="Resource monitor (modern htop replacement)"
+        ["tmux"]="Terminal multiplexer"
+        ["jq"]="JSON processor"
+        ["tree"]="Directory structure viewer"
+        ["unzip"]="Archive extraction tool"
+        ["fastfetch"]="System information display"
+        ["ripgrep"]="Fast text search (modern grep)"
+        ["bat"]="Cat with syntax highlighting"
+        ["fd"]="Fast file finder (modern find)"
+        ["zoxide"]="Smarter cd command"
+    )
+    echo ""
+    echo -e "${NEON_CYAN}Select tools to install (space to toggle, enter to confirm):${RESET}"
+    echo ""
+    echo "  [0] Select All / Deselect All"
+    echo ""
+    local idx=1
+    for tool in "${ESSENTIAL_TOOLS[@]}"; do
+        printf "  [%2d] %-12s - %s\n" $idx "$tool" "${tool_descriptions[$tool]}"
+        ((idx++))
+    done
+    echo ""
+    echo "Enter numbers separated by spaces (e.g., '0' for all, '1 3 5' for specific tools):"
+    read -p "> " selections
     local selected_tools=()
-    # Step 1: Show submenu so user can choose "All", "Minimal", or "Custom (multi-select)"
-    show_menu "ESSENTIAL CLI TOOLS - CHOOSE SET" \
-        "1. Install All tools" \
-        "2. Minimal set (curl, wget, git, neovim, tmux)" \
-        "3. Custom - select tools (multi-select)" \
-        "B. Back"
-
-    case "$SELECTION" in
-        *"Back"*)
-            return 0
-            ;;
-        *"Install All"*)
-            selected_tools=("${ESSENTIAL_TOOLS[@]}")
-            ;;
-        *"Minimal"*)
-            selected_tools=(curl wget git neovim tmux)
-            ;;
-        *"Custom"*)
-            # Step 2: Multi-select TUI for individual tools
-            show_multiselect "Select CLI tools to install (Space=toggle, Enter=confirm)" "${ESSENTIAL_TOOLS[@]}"
-            selected_tools=("${SELECTED_ITEMS[@]}")
-            if [ ${#selected_tools[@]} -eq 0 ]; then
-                warn "No tools selected. Aborting."
-                read -n 1 -s -r -p "Press any key to continue..."
-                return 0
+    if [[ " $selections " =~ " 0 " ]]; then
+        selected_tools=("${ESSENTIAL_TOOLS[@]}")
+        info "Selected all tools"
+    else
+        for num in $selections; do
+            if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le ${#ESSENTIAL_TOOLS[@]} ]; then
+                selected_tools+=("${ESSENTIAL_TOOLS[$((num-1))]}")
             fi
-            ;;
-        *)
-            return 0
-            ;;
-    esac
-
+        done
+    fi
+    if [ ${#selected_tools[@]} -eq 0 ]; then
+        warn "No selection made. Aborting."
+        read -n 1 -s -r -p "Press any key to continue..."
+        return 0
+    fi
+    echo ""
     info "Installing ${#selected_tools[@]} tool(s)..."
     local failed=0
     local install_list=()

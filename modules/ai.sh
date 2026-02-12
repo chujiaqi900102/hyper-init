@@ -9,6 +9,8 @@ ai_menu() {
         "1. Install OpenCode (Terminal Coding Agent)" \
         "2. Install Claude Code (Anthropic CLI)" \
         "3. Install OpenClaw (Autonomous Agent)" \
+        "4. Install VS Code/Cursor AI Extensions (Continue.dev, Codeium)" \
+        "5. Install Ollama (Local LLM runtime)" \
         "B. Back to Main Menu"
 
     case "$SELECTION" in
@@ -20,6 +22,12 @@ ai_menu() {
             ;;
         *"OpenClaw"*)
             install_openclaw
+            ;;
+        *"VS Code/Cursor AI Extensions"*|*"Continue.dev"*|*"Codeium"*)
+            install_vscode_ai_extensions
+            ;;
+        *"Ollama"*)
+            install_ollama
             ;;
         *"Back"*)
             return
@@ -95,6 +103,62 @@ install_openclaw() {
     
     info "Starting OpenClaw Onboarding..."
     openclaw onboard --install-daemon
-    
+
+    read -n 1 -s -r -p "Press any key to continue..."
+}
+
+install_vscode_ai_extensions() {
+    info "Installing AI extensions (Continue.dev, Codeium) for VS Code or Cursor..."
+
+    local code_cmd=""
+    if command -v code &>/dev/null; then
+        code_cmd="code"
+    elif command -v cursor &>/dev/null; then
+        # Cursor may support --install-extension when invoked as cursor
+        code_cmd="cursor"
+    else
+        warn "Neither 'code' (VS Code) nor 'cursor' CLI found in PATH."
+        info "Install VS Code or Cursor and ensure the CLI is in your PATH (e.g. Install 'code' command from VS Code Command Palette)."
+        read -n 1 -s -r -p "Press any key to continue..."
+        return 1
+    fi
+
+    run_task "Installing Continue.dev extension" "$code_cmd" --install-extension Continue.continue --force
+    run_task "Installing Codeium extension" "$code_cmd" --install-extension Codeium.codeium --force
+
+    success "AI extensions installed. Restart VS Code/Cursor if needed."
+    read -n 1 -s -r -p "Press any key to continue..."
+}
+
+install_ollama() {
+    info "Installing Ollama (local LLM runtime)..."
+
+    if command -v ollama &>/dev/null; then
+        warn "Ollama is already installed: $(ollama --version 2>/dev/null || ollama -v 2>/dev/null)"
+        read -p "Reinstall/update? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            read -n 1 -s -r -p "Press any key to continue..."
+            return 0
+        fi
+    fi
+
+    run_task "Running Ollama install script" bash -c "curl -fsSL https://ollama.com/install.sh | sh"
+    if [ $? -ne 0 ]; then
+        error "Ollama installation failed."
+        read -n 1 -s -r -p "Press any key to continue..."
+        return 1
+    fi
+
+    if command -v systemctl &>/dev/null && systemctl list-unit-files | grep -q ollama; then
+        run_task "Enabling Ollama service" sudo systemctl enable ollama
+        run_task "Starting Ollama service" sudo systemctl start ollama
+    fi
+
+    success "Ollama installed."
+    if command -v ollama &>/dev/null; then
+        echo -e "${NEON_CYAN}ollama:${RESET} $(ollama --version 2>/dev/null || echo 'installed')"
+    fi
+    info "Run 'ollama run <model>' to pull and run a model (e.g. ollama run llama3)."
     read -n 1 -s -r -p "Press any key to continue..."
 }

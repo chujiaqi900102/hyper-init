@@ -10,6 +10,10 @@ system_menu() {
         "2. Update System Packages" \
         "3. Configure SSH (Disable Root Login)" \
         "4. Enable UFW Firewall" \
+        "5. Repair APT Sources (Fix broken docker.list / Microsoft keys)" \
+        "6. Install Fail2ban (Brute-force protection)" \
+        "7. Install Unattended Upgrades (Auto security updates, Debian/Ubuntu)" \
+        "8. Install Timeshift (System snapshots & restore)" \
         "B. Back to Main Menu"
 
     case "$SELECTION" in
@@ -24,6 +28,18 @@ system_menu() {
             ;;
         *"Enable UFW"*)
             enable_firewall
+            ;;
+        *"Repair APT"*)
+            repair_apt_sources
+            ;;
+        *"Fail2ban"*)
+            install_fail2ban
+            ;;
+        *"Unattended Upgrades"*)
+            install_unattended_upgrades
+            ;;
+        *"Timeshift"*)
+            install_timeshift
             ;;
         *"Back"*)
             return
@@ -193,9 +209,139 @@ harden_ssh() {
 enable_firewall() {
     info "Enabling UFW Firewall..."
     install_pkg "ufw"
-    
+
     run_task "Allowing SSH" sudo ufw allow ssh
     run_task "Enabling UFW" sudo ufw --force enable
     success "Firewall enabled."
     sleep 2
+}
+
+# Repair broken APT sources (malformed docker.list, conflicting Microsoft Signed-By).
+# Call this when apt-get update fails with "Malformed entry" or "Conflicting values set for option Signed-By".
+# Usage: repair_apt_sources [--quiet]  (--quiet skips "Press any key" prompts, for use from other modules)
+repair_apt_sources() {
+    local quiet=
+    [ "$1" = "--quiet" ] && quiet=1
+
+    if [ "$PKG_MANAGER" != "apt" ]; then
+        warn "Repair APT sources only applies to Debian/Ubuntu (apt)."
+        [ -z "$quiet" ] && read -n 1 -s -r -p "Press any key to continue..."
+        return
+    fi
+
+    info "Checking APT sources..."
+    local update_out
+    update_out=$(sudo apt-get update 2>&1)
+    local update_rc=$?
+    if [ $update_rc -eq 0 ]; then
+        success "APT sources are OK. No repair needed."
+        [ -z "$quiet" ] && read -n 1 -s -r -p "Press any key to continue..."
+        return
+    fi
+
+    info "APT update failed. Attempting automatic repair..."
+    local repaired=0
+
+    # Fix malformed docker.list (common: wrong format or empty component)
+    if echo "$update_out" | grep -q "docker.list.*Malformed\|Malformed.*docker.list"; then
+        if [ -f /etc/apt/sources.list.d/docker.list ]; then
+            sudo cp /etc/apt/sources.list.d/docker.list "/etc/apt/sources.list.d/docker.list.bak.$(date +%Y%m%d_%H%M%S)"
+            sudo rm -f /etc/apt/sources.list.d/docker.list
+            success "Backed up and removed malformed /etc/apt/sources.list.d/docker.list (re-add Docker from Dev menu if needed)."
+            repaired=1
+        fi
+    fi
+
+    # Fix conflicting Microsoft Signed-By: use single key path /etc/apt/keyrings/packages.microsoft.gpg
+    if echo "$update_out" | grep -q "Signed-By.*microsoft\|packages.microsoft.com.*Signed-By"; then
+        local f
+        for f in /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            [ -f "$f" ] || continue
+            if grep -q "packages.microsoft.com" "$f" 2>/dev/null; then
+                if grep -q "/usr/share/keyrings/microsoft.gpg" "$f" 2>/dev/null; then
+                    sudo sed -i 's|signed-by=/usr/share/keyrings/microsoft.gpg|signed-by=/etc/apt/keyrings/packages.microsoft.gpg|g' "$f"
+                    # Ensure key exists in keyrings; copy from old location if present
+                    if [ ! -f /etc/apt/keyrings/packages.microsoft.gpg ] && [ -f /usr/share/keyrings/microsoft.gpg ]; then
+                        sudo install -D -o root -g root -m 644 /usr/share/keyrings/microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
+                    fi
+                    success "Updated $(basename "$f") to use Signed-By=/etc/apt/keyrings/packages.microsoft.gpg"
+                    repaired=1
+                fi
+            fi
+        done
+    fi
+
+    if [ $repaired -eq 1 ]; then
+        run_task "Re-running apt-get update" sudo apt-get update
+    fi
+
+    update_out=$(sudo apt-get update 2>&1)
+    if [ $? -ne 0 ]; then
+        error "APT sources could not be fully repaired. Please fix manually:"
+        echo -e "  ${NEON_CYAN}•${RESET} Malformed docker.list: sudo rm /etc/apt/sources.list.d/docker.list (or fix the line format)"
+        echo -e "  ${NEON_CYAN}•${RESET} Microsoft conflict: ensure all sources under /etc/apt/sources.list.d/ use the same Signed-By path for packages.microsoft.com"
+        echo ""
+        echo "$update_out"
+    else
+        success "APT sources repaired successfully."
+    fi
+    [ -z "$quiet" ] && read -n 1 -s -r -p "Press any key to continue..."
+}
+
+install_fail2ban() {
+    info "Installing Fail2ban (brute-force protection for SSH and other services)..."
+
+    install_pkg "fail2ban" || return 1
+
+    if command -v systemctl &>/dev/null; then
+        run_task "Enabling Fail2ban" sudo systemctl enable fail2ban
+        run_task "Starting Fail2ban" sudo systemctl start fail2ban
+    fi
+
+    success "Fail2ban installed."
+    info "Config: /etc/fail2ban/jail.local (copy from jail.conf). Default SSH jail is usually enabled."
+}
+
+install_unattended_upgrades() {
+    info "Installing Unattended Upgrades (automatic security updates)..."
+
+    if [ "$PKG_MANAGER" != "apt" ]; then
+        warn "Unattended-upgrades is only available on Debian/Ubuntu (apt)."
+        read -n 1 -s -r -p "Press any key to continue..."
+        return
+    fi
+
+    install_pkg "unattended-upgrades" || return 1
+    install_pkg "apt-listchanges" || true
+
+    run_task "Enabling automatic updates" sudo dpkg-reconfigure -plow unattended-upgrades
+
+    success "Unattended-upgrades installed."
+    info "Config: /etc/apt/apt.conf.d/50unattended-upgrades and /etc/apt/apt.conf.d/20auto-upgrades."
+}
+
+install_timeshift() {
+    info "Installing Timeshift (system snapshots and restore, useful for desktop)..."
+
+    local pkg=""
+    case "$PKG_MANAGER" in
+        apt)
+            pkg="timeshift"
+            ;;
+        dnf)
+            pkg="timeshift"
+            ;;
+        pacman)
+            pkg="timeshift"
+            ;;
+        *)
+            warn "Timeshift installation currently supports apt, dnf, and pacman only."
+            return 1
+            ;;
+    esac
+
+    install_pkg "$pkg" || return 1
+
+    success "Timeshift installed."
+    info "Run 'timeshift' or 'timeshift-gtk' to create and manage snapshots."
 }
