@@ -71,9 +71,24 @@ install_pkg() {
     esac
 }
 
-check_root() {
-    if [[ $EUID -ne 0 ]]; then
-       warn "This script might need root privileges for some tasks."
-       # We don't exit because we use sudo in commands
+init_sudo() {
+    # If running as root, we are good
+    if [[ $EUID -eq 0 ]]; then
+        return 0
     fi
+
+    # Validate sudo access (this calls sudo, which asks for password if needed)
+    # The user asked to "save as env var", but safe practice is to refresh the sudo timestamp.
+    info "Sudo privileges are required. Please enter your password if prompted."
+    
+    if ! sudo -v; then
+        error "Sudo verification failed. Exiting."
+        exit 1
+    fi
+
+    # Keep-alive loop: updates sudo timestamp every 60 seconds
+    # Runs in the background and kills itself when the parent script exits
+    ( while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null & )
+
+    success "Sudo privileges initialized."
 }

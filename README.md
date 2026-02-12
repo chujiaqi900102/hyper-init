@@ -29,7 +29,7 @@
 Clone the repository and run the script:
 
 ```bash
-git clone https://github.com/your-repo/hyper-init.git ~/.hyper-init
+git clone https://github.com/chujiaqi900102/hyper-init.git ~/.hyper-init
 cd ~/.hyper-init
 bash main.sh
 ```
@@ -38,7 +38,14 @@ bash main.sh
 *(Requires hosting the script remotely)*
 
 ```bash
-bash <(curl -sL https://your-server.com/bootstrap.sh)
+bash <(curl -sL https://raw.githubusercontent.com/chujiaqi900102/hyper-init/main/bootstrap.sh)
+```
+
+*Note: If `curl` is not installed, install it first:*
+```bash
+sudo apt update && sudo apt install -y curl  # Debian/Ubuntu
+sudo dnf install -y curl                     # RHEL/CentOS
+sudo pacman -S curl                          # Arch Linux
 ```
 
 ## 📂 Project Structure

@@ -23,12 +23,18 @@ main() {
     print_banner
 
     # 2. Check Prerequisites
-    check_root
+    init_sudo
     
     # 3. Detect OS
     # info "Detecting System Environment..."
     detect_os
     # success "Identified: $OS_TYPE ($OS_VERSION) using $PKG_MANAGER"
+
+    # 3.1 Ensure essential tools (curl)
+    if ! command -v curl &> /dev/null; then
+        warn "curl is missing. Installing..."
+        install_pkg "curl"
+    fi
     
     # 4. Main Menu Loop
     while true; do

@@ -4,22 +4,25 @@
 # HyperInit - Bootstrap Loader
 # ==============================================================================
 
-REPO_URL="https://github.com/your-repo/hyper-init.git" # Placeholder
+REPO_URL="https://github.com/chujiaqi900102/hyper-init.git"
 INSTALL_DIR="$HOME/.hyper-init"
 
 echo "Initializing HyperInit..."
 
-# Ensure git is installed
-if ! command -v git &> /dev/null; then
-    echo "Git not found. Installing..."
-    if [ -f /etc/debian_version ]; then
-        sudo apt update && sudo apt install -y git
-    elif [ -f /etc/redhat-release ]; then
-        sudo dnf install -y git
-    elif [ -f /etc/arch-release ]; then
-        sudo pacman -S --noconfirm git
+# Ensure git and curl are installed
+deps=(git curl)
+for dep in "${deps[@]}"; do
+    if ! command -v "$dep" &> /dev/null; then
+        echo "$dep not found. Installing..."
+        if [ -f /etc/debian_version ]; then
+            sudo apt update && sudo apt install -y "$dep"
+        elif [ -f /etc/redhat-release ]; then
+            sudo dnf install -y "$dep"
+        elif [ -f /etc/arch-release ]; then
+            sudo pacman -S --noconfirm "$dep"
+        fi
     fi
-fi
+done
 
 # Clone Repo
 if [ -d "$INSTALL_DIR" ]; then
