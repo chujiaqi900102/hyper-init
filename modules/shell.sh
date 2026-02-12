@@ -126,12 +126,56 @@ install_zsh_plugins() {
 }
 
 install_essentials() {
-    info "Installing Essential CLI Tools..."
-    local tools=(curl wget git vim htop tmux jq tree unzip fastfetch)
+    info "Installing Essential Modern CLI Tools..."
     
+    # Modern replacements: 
+    # htop -> btop
+    # vim -> neovim
+    # cat -> bat
+    # find -> fd
+    # grep -> ripgrep
+    # cd -> zoxide
+    
+    local tools=(curl wget git neovim btop tmux jq tree unzip fastfetch ripgrep zoxide)
+
+    # Distro-specific package name handling
+    if [ "$PKG_MANAGER" == "apt" ]; then
+        # Debian/Ubuntu Quirks
+        install_pkg "bat"
+        # Create alias for batcat -> bat if needed
+        if command -v batcat &> /dev/null && ! command -v bat &> /dev/null; then
+            # We can't easily alias for the user's shell here without modifying rc files for everyone, 
+            # but we can try to symlink if it doesn't exist (risky) or just warn.
+            # Local bin is safer
+            mkdir -p ~/.local/bin
+            ln -sf /usr/bin/batcat ~/.local/bin/bat
+        fi
+        
+        install_pkg "fd-find"
+        if command -v fdfind &> /dev/null && ! command -v fd &> /dev/null; then
+             mkdir -p ~/.local/bin
+             ln -sf /usr/bin/fdfind ~/.local/bin/fd
+        fi
+
+    elif [ "$PKG_MANAGER" == "pacman" ]; then
+        # Arch uses standard names usually
+        tools+=(bat fd)
+    else
+        # RHEL/Fedora
+        tools+=(bat fd-find)
+    fi
+
     for tool in "${tools[@]}"; do
         install_pkg "$tool"
     done
     
     success "Essential tools installed."
+    
+    # Version checks
+    local check_tools=(nvim btop bat fd rg zoxide)
+    for t in "${check_tools[@]}"; do
+        if command -v "$t" &> /dev/null; then
+             echo -e "${NEON_CYAN}$t Version:${RESET} $($t --version | head -n 1)"
+        fi
+    done
 }
