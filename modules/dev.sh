@@ -46,19 +46,16 @@ dev_menu() {
 }
 
 install_docker() {
-    info "Installing Docker (Legacy/Stable via Lite Script)..."
+    info "Installing Docker (via Lite Script)..."
     
     local script_url="https://linuxmirrors.cn/docker-lite.sh"
     local script_file="/tmp/docker_lite.sh"
     
     curl -sSL "$script_url" -o "$script_file"
     
-    # Run the lite script with minimal interaction
-    # The --source option avoids menu if possible, but docker-lite often defaults to official if not specified.
-    # Trying clean run. 
-    # Use sudo only, no sudo -i.
-    
-    run_task "Running Docker installation" sudo bash "$script_file" --ignore-backup-tips --docker-ce-source "tuna" --docker-hub-source "audit"
+    # Run the lite script with sudo (no sudo -i needed)
+    info "Running Docker installation..."
+    sudo bash "$script_file"
     
     rm -f "$script_file"
     
@@ -68,7 +65,7 @@ install_docker() {
         warn "You may need to logout and login again for docker group changes to apply."
     fi
      
-    success "Docker install process finished."
+    success "Docker installation finished."
 
     if command -v docker &> /dev/null; then
         echo -e "${NEON_CYAN}Docker Version:${RESET} $(docker --version)"

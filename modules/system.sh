@@ -36,30 +36,16 @@ system_menu() {
 change_mirrors() {
     info "Configuring System Mirrors (Lite)..."
     
-    # Core logic inspired by LinuxMirrors lite script
-    # We download the lite script but modify execution to skip interaction if possible or just run it directly
-    # The lite script is cleaner. To avoid sudo -i, we run with sudo -E to preserve env if needed,
-    # or just rely on the script's internal sudo usage if it has it. 
-    # Actually, the lite scripts usually require root. We will run them with sudo bash.
-    
-    # Download lite script
+    # Download the lite script
     local script_url="https://linuxmirrors.cn/main-lite.sh"
     local script_file="/tmp/linuxmirrors_lite.sh"
     
     curl -sSL "$script_url" -o "$script_file"
     
-    # The lite script still has some branding. To fully "remove ads" and control execution:
-    # We can try to run it with flags if supported, or just run it. 
-    # The user asked to "integrate core parts", but the script is complex (supports many distros).
-    # Comprehensive integration is large. 
-    # Best approach: Run the Lite script which is already minimal, but strip potential pause/ad calls if we can sed them out.
-    
-    # Removing potential "pause" or banner calls if simple. 
-    # For now, running the lite script is significantly better than the full one.
-    # It does not require sudo -i, just sudo.
-    
+    # Run the lite script with sudo (no sudo -i needed)
+    # The lite script is designed to work with regular sudo
     info "Running mirror optimization..."
-    sudo bash "$script_file" --use-intranet-source false --ignore-backup-tips
+    sudo bash "$script_file"
     
     rm -f "$script_file"
     success "Mirror configuration completed."
