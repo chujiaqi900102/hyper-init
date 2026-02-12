@@ -6,11 +6,11 @@
 
 dev_menu() {
     show_menu "DEVELOPMENT ENVIRONMENT" \
-        "1. Install Docker (LinuxMirrors.cn - Recommended)" \
+        "1. Install Docker (Container Platform)" \
         "2. Install Podman (Daemonless Container Engine)" \
         "3. Install LXC/LXD (System Containers)" \
         "4. Install Node.js (via NVM or Package Manager)" \
-        "5. Install Python Environment (uv + miniconda)" \
+        "5. Install Python Tools (uv Package Manager)" \
         "6. Install Rust (Rustup)" \
         "7. Install Go (Latest)" \
         "B. Back to Main Menu"

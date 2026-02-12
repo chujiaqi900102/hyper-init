@@ -29,6 +29,7 @@ system_menu() {
             return
             ;;
     esac
+    read -n 1 -s -r -p "Press any key to continue..."
     # Recursively show menu again
     system_menu
 }
@@ -39,7 +40,11 @@ change_mirrors() {
     # Only support Debian/Ubuntu for now
     if [ "$PKG_MANAGER" != "apt" ]; then
         warn "Mirror configuration currently only supports Debian/Ubuntu systems."
-        warn "For other systems, please configure manually."
+        echo ""
+        info "For other distributions:"
+        echo -e "  ${NEON_CYAN}•${RESET} Fedora/RHEL: Edit /etc/yum.repos.d/"
+        echo -e "  ${NEON_CYAN}•${RESET} Arch: Edit /etc/pacman.d/mirrorlist"
+        echo ""
         read -n 1 -s -r -p "Press any key to continue..."
         return
     fi
@@ -138,7 +143,16 @@ EOF
 }
 
 update_system() {
-    info "Updating system packages..."
+    info "This will update all system packages."
+    echo ""
+    read -p "Continue? [Y/n] " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]] && [[ -n $REPLY ]]; then
+        info "Update cancelled."
+        read -n 1 -s -r -p "Press any key to continue..."
+        return
+    fi
+    
     case "$PKG_MANAGER" in
         apt)
             run_task "Updating package lists" sudo apt-get update
@@ -151,6 +165,8 @@ update_system() {
             run_task "Updating system" sudo pacman -Syu --noconfirm
             ;;
     esac
+    success "System updated."
+    read -n 1 -s -r -p "Press any key to continue..."
 }
 
 harden_ssh() {

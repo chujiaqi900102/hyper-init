@@ -36,31 +36,47 @@ main() {
         install_pkg "curl"
     fi
     
+    # 3.2 Show first-time user guidance
+    if [ ! -f ~/.hyper-init/.initialized ]; then
+        echo ""
+        info "First time running HyperInit? Here's a recommended workflow:"
+        echo -e "  ${NEON_CYAN}1.${RESET} System Initialization → Change Mirrors (faster downloads)"
+        echo -e "  ${NEON_CYAN}2.${RESET} System Initialization → Update System Packages"
+        echo -e "  ${NEON_CYAN}3.${RESET} Development Environment → Install your tools"
+        echo -e "  ${NEON_CYAN}4.${RESET} Shell Customization → Install Zsh + Oh-My-Zsh"
+        echo ""
+        read -p "Press Enter to continue to main menu..."
+        
+        # Mark as initialized
+        mkdir -p ~/.hyper-init
+        touch ~/.hyper-init/.initialized
+    fi
+    
     # 4. Main Menu Loop
     while true; do
         show_menu "MAIN MENU" \
-            "1. System Initialization (Mirrors, Update)" \
-            "2. Install AI Agents (OpenCode, Claude...)" \
-            "3. Shell Experience (Zsh, Oh-My-Zsh)" \
-            "4. Dev Environment (Docker, Langs)" \
-            "5. Desktop Apps (Chrome, VSCode)" \
+            "1. System Initialization (Mirrors, Updates, SSH, Firewall)" \
+            "2. Development Environment (Docker, Node, Python, Rust, Go)" \
+            "3. Shell Customization (Zsh, Oh-My-Zsh, Tools)" \
+            "4. Desktop Applications (Chrome, VS Code, Fonts)" \
+            "5. AI Agents (OpenCode, Claude, OpenClaw)" \
             "Q. Quit"
             
         case "$SELECTION" in
             *"System Initialization"*)
                 system_menu
                 ;;
-            *"Install AI Agents"*)
-                ai_menu
-                ;;
-            *"Shell Experience"*)
-                shell_menu
-                ;;
-            *"Dev Environment"*)
+            *"Development Environment"*)
                 dev_menu
                 ;;
-            *"Desktop Apps"*)
+            *"Shell Customization"*)
+                shell_menu
+                ;;
+            *"Desktop Applications"*)
                 desktop_menu
+                ;;
+            *"AI Agents"*)
+                ai_menu
                 ;;
             *"Quit"*)
                 echo -e "${NEON_CYAN}  See you, Space Cowboy...${RESET}"

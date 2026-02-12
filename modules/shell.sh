@@ -10,7 +10,7 @@ shell_menu() {
         "2. Install Oh-My-Zsh (Automated)" \
         "3. Install Powerlevel10k Theme" \
         "4. Install Zsh Plugins (Autosuggestions, Syntax Highlighting)" \
-        "5. Install Essential Tools (curl, git, vim, htop, etc.)" \
+        "5. Install Essential CLI Tools (Interactive Selection)" \
         "B. Back to Main Menu"
 
     case "$SELECTION" in
@@ -166,6 +166,17 @@ install_essentials() {
     echo "Enter numbers separated by spaces (e.g., '0' for all, '1 3 5' for specific tools):"
     read -p "> " selections
     
+    # Validate input
+    if [ -z "$selections" ]; then
+        warn "No selection made. Aborting."
+        read -n 1 -s -r -p "Press any key to continue..."
+        return
+    fi
+    
+    # Show what was selected
+    echo ""
+    info "Processing selections: $selections"
+    
     # Parse selections
     local selected_tools=()
     
@@ -184,7 +195,7 @@ install_essentials() {
     fi
     
     if [ ${#selected_tools[@]} -eq 0 ]; then
-        warn "No tools selected. Aborting."
+        warn "No valid tools selected. Aborting."
         read -n 1 -s -r -p "Press any key to continue..."
         return
     fi
