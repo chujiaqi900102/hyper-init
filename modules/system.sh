@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# ==============================================================================
+# HyperInit - System Module
+# ==============================================================================
+
+system_menu() {
+    show_menu "SYSTEM INITIALIZATION" \
+        "1. Change Mirrors (LinuxMirrors.cn)" \
+        "2. Update System Packages" \
+        "3. Configure SSH (Disable Root Login)" \
+        "4. Enable UFW Firewall" \
+        "B. Back to Main Menu"
+
+    case "$SELECTION" in
+        *"Change Mirrors"*)
+            change_mirrors
+            ;;
+        *"Update System"*)
+            update_system
+            ;;
+        *"Configure SSH"*)
+            harden_ssh
+            ;;
+        *"Enable UFW"*)
+            enable_firewall
+            ;;
+        *"Back"*)
+            return
+            ;;
+    esac
+    # Recursively show menu again
+    system_menu
+}
+
+change_mirrors() {
+    info "Launching LinuxMirrors.cn script..."
+    # We use the official script from SuperManito
+    bash <(curl -sSL https://linuxmirrors.cn/main.sh)
+    success "Mirror configuration completed."
+    read -n 1 -s -r -p "Press any key to continue..."
+}
+
+update_system() {
+    info "Updating system packages..."
+    case "$PKG_MANAGER" in
+        apt)
+            run_task "Updating package lists" sudo apt-get update
+            run_task "Upgrading packages" sudo apt-get upgrade -y
+            ;;
+        dnf)
+            run_task "Updating system" sudo dnf update -y
+            ;;
+        pacman)
+            run_task "Updating system" sudo pacman -Syu --noconfirm
+            ;;
+    esac
+}
+
+harden_ssh() {
+    info "Hardening SSH configuration..."
+    if [ -f /etc/ssh/sshd_config ]; then
+        # Back up first
+        sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+        
+        # Disable Root Login
+        sudo sed -i 's/^#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+        sudo sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+        
+        # Disable Password Auth (Optional, usually risky if no keys set up, skipping for safety or ask user)
+        # For now, just Root Login
+        
+        run_task "Restarting SSH Service" sudo systemctl restart sshd
+        success "SSH hardened: Root login disabled."
+    else
+        warn "/etc/ssh/sshd_config not found."
+    fi
+    sleep 2
+}
+
+enable_firewall() {
+    info "Enabling UFW Firewall..."
+    install_pkg "ufw"
+    
+    run_task "Allowing SSH" sudo ufw allow ssh
+    run_task "Enabling UFW" sudo ufw --force enable
+    success "Firewall enabled."
+    sleep 2
+}
