@@ -10,6 +10,7 @@ shell_menu() {
         "2. Install Oh-My-Zsh (Automated)" \
         "3. Install Powerlevel10k Theme" \
         "4. Install Zsh Plugins (Autosuggestions, Syntax Highlighting)" \
+        "5. Install Essential Tools (curl, git, vim, htop, etc.)" \
         "B. Back to Main Menu"
 
     case "$SELECTION" in
@@ -24,6 +25,9 @@ shell_menu() {
             ;;
         *"Plugins"*)
             install_zsh_plugins
+            ;;
+        *"Essential Tools"*)
+            install_essentials
             ;;
         *"Back"*)
             return
@@ -119,4 +123,15 @@ install_zsh_plugins() {
     sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc
     
     success "Plugins installed and enabled."
+}
+
+install_essentials() {
+    info "Installing Essential CLI Tools..."
+    local tools=(curl wget git vim htop tmux jq tree unzip neofetch)
+    
+    for tool in "${tools[@]}"; do
+        install_pkg "$tool"
+    done
+    
+    success "Essential tools installed."
 }
