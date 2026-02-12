@@ -7,15 +7,23 @@
 dev_menu() {
     show_menu "DEVELOPMENT ENVIRONMENT" \
         "1. Install Docker (LinuxMirrors.cn - Recommended)" \
-        "2. Install Node.js (via NVM or Package Manager)" \
-        "3. Install Python Environment (uv + miniconda)" \
-        "4. Install Rust (Rustup)" \
-        "5. Install Go (Latest)" \
+        "2. Install Podman (Daemonless Container Engine)" \
+        "3. Install LXC/LXD (System Containers)" \
+        "4. Install Node.js (via NVM or Package Manager)" \
+        "5. Install Python Environment (uv + miniconda)" \
+        "6. Install Rust (Rustup)" \
+        "7. Install Go (Latest)" \
         "B. Back to Main Menu"
 
     case "$SELECTION" in
         *"Docker"*)
             install_docker
+            ;;
+        *"Podman"*)
+            install_podman
+            ;;
+        *"LXC/LXD"*)
+            install_lxc
             ;;
         *"Node.js"*)
             install_node
@@ -47,6 +55,43 @@ install_docker() {
         bash <(curl -sSL https://linuxmirrors.cn/docker.sh)
     fi
     success "Docker installation complete."
+}
+
+install_podman() {
+    info "Installing Podman..."
+    install_pkg "podman"
+    
+    # Optional: Install podman-docker to simulate docker command
+    read -p "Install 'podman-docker' wrapper (allows using 'docker' command)? [Y/n] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ || -z $REPLY ]]; then
+        install_pkg "podman-docker"
+    fi
+    
+    success "Podman installed. Version: $(podman --version)"
+}
+
+install_lxc() {
+    info "Installing LXC and LXD..."
+    
+    if [ "$PKG_MANAGER" == "apt" ]; then
+        # Ubuntu often prefers snap for lxd, but let's try apt first or snap
+        if command -v snap &> /dev/null; then
+            info "Installing LXD via Snap (Recommended for Ubuntu/Debian)..."
+            sudo snap install lxd
+            info "Initializing LXD (auto)..."
+            sudo lxd init --auto
+        else
+            install_pkg "lxc"
+            install_pkg "lxd" 
+            # If lxd package not found via apt (older debian), warn
+        fi
+    else
+        install_pkg "lxc"
+        install_pkg "lxd"
+    fi
+    
+    success "LXC/LXD installed."
 }
 
 install_node() {
