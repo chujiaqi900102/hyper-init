@@ -39,7 +39,7 @@ change_mirrors() {
     if [ "$EUID" -ne 0 ]; then
          warn "This script requires a root login shell environment (sudo -i)."
          info "Switching context to execute..."
-         sudo -i bash -c "bash <(curl -sSL https://linuxmirrors.cn/main.sh)"
+         sudo -i bash -c 'bash <(curl -sSL https://linuxmirrors.cn/main.sh)'
     else
          bash <(curl -sSL https://linuxmirrors.cn/main.sh)
     fi
