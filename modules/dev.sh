@@ -46,36 +46,148 @@ dev_menu() {
 }
 
 install_docker() {
-    info "Installing Docker (via Lite Script)..."
+    info "Installing Docker..."
     
-    local script_url="https://linuxmirrors.cn/docker-lite.sh"
-    local script_file="/tmp/docker_lite.sh"
+    # Only support Debian/Ubuntu for now
+    if [ "$PKG_MANAGER" != "apt" ]; then
+        warn "Docker installation currently only supports Debian/Ubuntu systems."
+        warn "For other systems, please install manually."
+        read -n 1 -s -r -p "Press any key to continue..."
+        return
+    fi
     
-    curl -sSL "$script_url" -o "$script_file"
+    # Check if Docker is already installed
+    if command -v docker &> /dev/null; then
+        warn "Docker is already installed: $(docker --version)"
+        read -p "Do you want to reinstall? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            return
+        fi
+    fi
     
-    # Run the lite script with sudo (no sudo -i needed)
-    info "Running Docker installation..."
-    sudo bash "$script_file"
+    # Select Docker CE source
+    echo ""
+    echo -e "${NEON_CYAN}Select Docker CE Installation Source:${RESET}"
+    echo "  1. Tsinghua University (清华大学)"
+    echo "  2. USTC (中国科学技术大学)"
+    echo "  3. Aliyun (阿里云)"
+    echo "  4. Tencent Cloud (腾讯云)"
+    echo "  5. Official Docker (docker.com)"
+    echo ""
+    read -p "Enter your choice [1-5]: " docker_source_choice
     
-    rm -f "$script_file"
+    local docker_gpg_url=""
+    local docker_repo_url=""
     
-    # Post-install user group
+    case "$docker_source_choice" in
+        1)
+            docker_gpg_url="https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/debian/gpg"
+            docker_repo_url="https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/debian"
+            ;;
+        2)
+            docker_gpg_url="https://mirrors.ustc.edu.cn/docker-ce/linux/debian/gpg"
+            docker_repo_url="https://mirrors.ustc.edu.cn/docker-ce/linux/debian"
+            ;;
+        3)
+            docker_gpg_url="https://mirrors.aliyun.com/docker-ce/linux/debian/gpg"
+            docker_repo_url="https://mirrors.aliyun.com/docker-ce/linux/debian"
+            ;;
+        4)
+            docker_gpg_url="https://mirrors.tencent.com/docker-ce/linux/debian/gpg"
+            docker_repo_url="https://mirrors.tencent.com/docker-ce/linux/debian"
+            ;;
+        5)
+            docker_gpg_url="https://download.docker.com/linux/debian/gpg"
+            docker_repo_url="https://download.docker.com/linux/debian"
+            ;;
+        *)
+            error "Invalid choice. Aborting."
+            read -n 1 -s -r -p "Press any key to continue..."
+            return
+            ;;
+    esac
+    
+    info "Selected Docker CE source: $docker_repo_url"
+    
+    # Install prerequisites
+    run_task "Installing prerequisites" sudo apt-get install -y ca-certificates curl gnupg lsb-release
+    
+    # Add Docker GPG key
+    run_task "Adding Docker GPG key" bash -c "curl -fsSL $docker_gpg_url | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg"
+    
+    # Add Docker repository
+    local arch=$(dpkg --print-architecture)
+    local codename=$(lsb_release -cs)
+    
+    echo "deb [arch=$arch signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] $docker_repo_url $codename stable" | \
+        sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    
+    success "Docker repository configured"
+    
+    # Update package index
+    run_task "Updating package index" sudo apt-get update
+    
+    # Install Docker
+    run_task "Installing Docker Engine" sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    
+    # Add user to docker group
     if ! groups "$USER" | grep -q docker; then
         run_task "Adding $USER to docker group" sudo usermod -aG docker "$USER"
-        warn "You may need to logout and login again for docker group changes to apply."
+        warn "You need to logout and login again for docker group changes to apply."
     fi
-     
+    
+    # Configure Docker Hub registry mirror
+    echo ""
+    echo -e "${NEON_CYAN}Select Docker Hub Registry Mirror (Optional):${RESET}"
+    echo "  1. Aliyun (阿里云)"
+    echo "  2. Tencent Cloud (腾讯云)"
+    echo "  3. USTC (中国科学技术大学)"
+    echo "  4. Docker China (docker.mirrors.ustc.edu.cn)"
+    echo "  5. None (Use official Docker Hub)"
+    echo ""
+    read -p "Enter your choice [1-5]: " registry_choice
+    
+    local registry_mirror=""
+    case "$registry_choice" in
+        1) registry_mirror="https://registry.cn-hangzhou.aliyuncs.com" ;;
+        2) registry_mirror="https://mirror.ccs.tencentyun.com" ;;
+        3) registry_mirror="https://docker.mirrors.ustc.edu.cn" ;;
+        4) registry_mirror="https://registry.docker-cn.com" ;;
+        5) 
+            info "Skipping Docker Hub registry mirror configuration."
+            ;;
+        *)
+            warn "Invalid choice. Skipping registry mirror configuration."
+            ;;
+    esac
+    
+    if [ -n "$registry_mirror" ]; then
+        info "Configuring Docker Hub registry mirror: $registry_mirror"
+        
+        sudo mkdir -p /etc/docker
+        sudo tee /etc/docker/daemon.json > /dev/null <<EOF
+{
+  "registry-mirrors": ["$registry_mirror"]
+}
+EOF
+        
+        run_task "Restarting Docker service" sudo systemctl restart docker
+        success "Docker Hub registry mirror configured"
+    fi
+    
     success "Docker installation finished."
-
+    
+    # Show versions
     if command -v docker &> /dev/null; then
         echo -e "${NEON_CYAN}Docker Version:${RESET} $(docker --version)"
     fi
-    if command -v docker-compose &> /dev/null; then
-        echo -e "${NEON_CYAN}Docker Compose Version:${RESET} $(docker-compose --version)"
-    else
-        # newer docker has compose as plugin
-        echo -e "${NEON_CYAN}Docker Compose (Plugin):${RESET} $(docker compose version 2>/dev/null)"
+    if command -v docker &> /dev/null && docker compose version &> /dev/null; then
+        echo -e "${NEON_CYAN}Docker Compose (Plugin):${RESET} $(docker compose version)"
     fi
+    
+    echo ""
+    info "To use Docker without sudo, please logout and login again."
 }
 
 install_podman() {
