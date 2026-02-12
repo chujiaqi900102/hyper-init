@@ -34,16 +34,44 @@ shell_menu() {
 }
 
 install_zsh() {
-    install_pkg "zsh"
-    # Set as default shell
-    chsh -s $(which zsh)
-    success "Zsh set as default shell. Logout/Login required to take effect."
+    # Check if zsh is installed
+    if ! command -v zsh &> /dev/null; then
+        warn "Zsh not found. Installing..."
+        install_pkg "zsh"
+    else 
+        info "Zsh is already installed."
+    fi
+
+    local zsh_path=$(which zsh)
+    if [ "$SHELL" != "$zsh_path" ]; then
+        info "Setting Zsh as default shell..."
+        # chsh might require password, or might not work in non-interactive environments
+        # using sudo chsh for the current user
+        sudo chsh -s "$zsh_path" "$USER"
+        success "Zsh set as default shell. Logout/Login might be required."
+    else
+        info "Zsh is already the default shell."
+    fi
 }
 
 install_omz() {
+    # Dependency check: Zsh
+    if ! command -v zsh &> /dev/null; then
+        warn "Zsh is required for Oh-My-Zsh but is not installed."
+        read -p "Install Zsh now? [Y/n] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ || -z $REPLY ]]; then
+            install_zsh
+        else
+            error "Cannot install Oh-My-Zsh without Zsh."
+            return 1
+        fi
+    fi
+
     if [ -d "$HOME/.oh-my-zsh" ]; then
         warn "Oh-My-Zsh is already installed."
     else
+        info "Installing Oh-My-Zsh..."
         sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
         success "Oh-My-Zsh installed."
     fi
