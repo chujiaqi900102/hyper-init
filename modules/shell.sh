@@ -127,7 +127,7 @@ install_zsh_plugins() {
 
 install_essentials() {
     info "Installing Essential CLI Tools..."
-    local tools=(curl wget git vim htop tmux jq tree unzip neofetch)
+    local tools=(curl wget git vim htop tmux jq tree unzip fastfetch)
     
     for tool in "${tools[@]}"; do
         install_pkg "$tool"
