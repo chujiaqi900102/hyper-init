@@ -53,6 +53,8 @@ system_menu() {
 change_mirrors() {
     info "Configuring System Mirrors..."
     
+    repair_apt_sources --quiet
+    
     # Only support Debian/Ubuntu for now
     if [ "$PKG_MANAGER" != "apt" ]; then
         warn "Mirror configuration currently only supports Debian/Ubuntu systems."
@@ -169,6 +171,8 @@ update_system() {
         return
     fi
     
+    repair_apt_sources --quiet
+    
     case "$PKG_MANAGER" in
         apt)
             run_task "Updating package lists" sudo apt-get update
@@ -216,8 +220,8 @@ enable_firewall() {
     sleep 2
 }
 
-# Repair broken APT sources (malformed docker.list, conflicting Microsoft Signed-By).
-# Call this when apt-get update fails with "Malformed entry" or "Conflicting values set for option Signed-By".
+# Repair broken APT sources (malformed docker.list, cdrom, conflicting Microsoft Signed-By).
+# Call this when apt-get update fails with "Malformed entry", "cdrom://", or "Conflicting values set for option Signed-By".
 # Usage: repair_apt_sources [--quiet]  (--quiet skips "Press any key" prompts, for use from other modules)
 repair_apt_sources() {
     local quiet=
@@ -241,6 +245,18 @@ repair_apt_sources() {
 
     info "APT update failed. Attempting automatic repair..."
     local repaired=0
+
+    # Fix cdrom sources (from DVD ISO installation)
+    if echo "$update_out" | grep -q "cdrom://"; then
+        for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
+            [ -f "$f" ] || continue
+            if grep -q "cdrom://" "$f"; then
+                sudo sed -i '/cdrom:/s/^/# /' "$f"
+                success "Commented out cdrom:// lines in $(basename "$f")"
+                repaired=1
+            fi
+        done
+    fi
 
     # Fix malformed docker.list (common: wrong format or empty component)
     if echo "$update_out" | grep -q "docker.list.*Malformed\|Malformed.*docker.list"; then

@@ -26,7 +26,7 @@ shell_menu() {
         *"Plugins"*)
             install_zsh_plugins || error "Zsh plugins installation failed."
             ;;
-        *"Essential Tools"*)
+        *"Essential"*)
             install_essentials || error "Essential CLI tools installation failed."
             ;;
         *"Back"*)
