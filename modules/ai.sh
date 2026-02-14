@@ -37,17 +37,49 @@ ai_menu() {
 }
 
 install_opencode() {
-    info "Installing OpenCode..."
-    # Official install script
-    curl -fsSL https://opencode.ai/install | bash
+    local install_success=false
     
-    if [ $? -eq 0 ]; then
-        success "OpenCode installed successfully!"
-        info "Run 'opencode' to start."
-    else
-        error "OpenCode installation failed."
+    info "尝试: 官方安装脚本..."
+    if curl -fsSL https://opencode.ai/install | bash 2>/dev/null; then
+        install_success=true
     fi
-    read -n 1 -s -r -p "Press any key to continue..."
+    
+    if [ "$install_success" = false ]; then
+        info "尝试: npm install -g opencode-ai..."
+        if npm install -g opencode-ai 2>/dev/null; then
+            install_success=true
+        fi
+    fi
+    
+    if [ "$install_success" = false ]; then
+        info "尝试: bun install -g opencode-ai..."
+        if bun install -g opencode-ai 2>/dev/null; then
+            install_success=true
+        fi
+    fi
+    
+    if [ "$install_success" = false ]; then
+        info "尝试: pnpm install -g opencode-ai..."
+        if pnpm install -g opencode-ai 2>/dev/null; then
+            install_success=true
+        fi
+    fi
+    
+    if [ "$install_success" = false ] && [ "$(uname)" = "Darwin" ]; then
+        info "尝试: brew install anomalyco/tap/opencode..."
+        if brew install anomalyco/tap/opencode 2>/dev/null; then
+            install_success=true
+        fi
+    fi
+    
+    if [ "$install_success" = true ]; then
+        success "OpenCode 安装成功!"
+        info "运行 'opencode' 启动。"
+    else
+        error "所有自动安装方法均失败。"
+        info "请手动安装: https://opencode.ai/docs/zh-cn"
+    fi
+    read -n 1 -s -r -p "按任意键继续..."
 }
 
 install_claude() {
