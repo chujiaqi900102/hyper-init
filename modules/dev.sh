@@ -77,29 +77,47 @@ install_docker() {
     echo ""
     read -p "Enter your choice [1-5]: " docker_source_choice
     
+    # Docker CE apt paths are per-distro: ubuntu vs debian (see https://download.docker.com/linux/)
+    local docker_ce_linux="debian"
+    if [ -r /etc/os-release ]; then
+        # shellcheck source=/dev/null
+        . /etc/os-release
+        case "${ID:-}" in
+            ubuntu|pop|linuxmint|zorin) docker_ce_linux="ubuntu" ;;
+            *)
+                if echo "${ID_LIKE:-}" | grep -qw ubuntu; then
+                    docker_ce_linux="ubuntu"
+                else
+                    docker_ce_linux="debian"
+                fi
+                ;;
+        esac
+    fi
+    info "Docker CE apt suite: linux/$docker_ce_linux (from /etc/os-release ID=${ID:-unknown})."
+
     local docker_gpg_url=""
     local docker_repo_url=""
     
     case "$docker_source_choice" in
         1)
-            docker_gpg_url="https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/debian/gpg"
-            docker_repo_url="https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/debian"
+            docker_gpg_url="https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/${docker_ce_linux}/gpg"
+            docker_repo_url="https://mirrors.tuna.tsinghua.edu.cn/docker-ce/linux/${docker_ce_linux}"
             ;;
         2)
-            docker_gpg_url="https://mirrors.ustc.edu.cn/docker-ce/linux/debian/gpg"
-            docker_repo_url="https://mirrors.ustc.edu.cn/docker-ce/linux/debian"
+            docker_gpg_url="https://mirrors.ustc.edu.cn/docker-ce/linux/${docker_ce_linux}/gpg"
+            docker_repo_url="https://mirrors.ustc.edu.cn/docker-ce/linux/${docker_ce_linux}"
             ;;
         3)
-            docker_gpg_url="https://mirrors.aliyun.com/docker-ce/linux/debian/gpg"
-            docker_repo_url="https://mirrors.aliyun.com/docker-ce/linux/debian"
+            docker_gpg_url="https://mirrors.aliyun.com/docker-ce/linux/${docker_ce_linux}/gpg"
+            docker_repo_url="https://mirrors.aliyun.com/docker-ce/linux/${docker_ce_linux}"
             ;;
         4)
-            docker_gpg_url="https://mirrors.tencent.com/docker-ce/linux/debian/gpg"
-            docker_repo_url="https://mirrors.tencent.com/docker-ce/linux/debian"
+            docker_gpg_url="https://mirrors.tencent.com/docker-ce/linux/${docker_ce_linux}/gpg"
+            docker_repo_url="https://mirrors.tencent.com/docker-ce/linux/${docker_ce_linux}"
             ;;
         5)
-            docker_gpg_url="https://download.docker.com/linux/debian/gpg"
-            docker_repo_url="https://download.docker.com/linux/debian"
+            docker_gpg_url="https://download.docker.com/linux/${docker_ce_linux}/gpg"
+            docker_repo_url="https://download.docker.com/linux/${docker_ce_linux}"
             ;;
         *)
             error "Invalid choice. Aborting."
