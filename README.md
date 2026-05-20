@@ -76,9 +76,11 @@
 
 ### Prerequisites
 - A Debian/Ubuntu-based Linux system (primary support)
-- `curl` or `wget` installed
+- `curl` or `wget` (bootstrap can install `curl` if missing)
 - Internet connection
-- Sudo privileges
+- **Root or sudo**: LXC/Proxmox containers are often root-only with no `sudo` package — that is supported. Non-root hosts need `sudo`.
+
+**LXC / Debian 13 (trixie):** Run inside the container as root, e.g. `lxc exec <name> -- bash` or `pct exec <vmid> -- bash`. Minimal templates without `git` or `sudo` are OK; bootstrap installs deps via `apt` and can fall back to a curl tarball download.
 
 ### One-Line Installation
 
