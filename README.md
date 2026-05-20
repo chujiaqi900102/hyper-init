@@ -75,12 +75,15 @@
 ## 🚀 Quick Start
 
 ### Prerequisites
-- A Debian/Ubuntu-based Linux system (primary support)
-- `curl` or `wget` (bootstrap can install `curl` if missing)
+- A Debian/Ubuntu-based Linux system (primary support; Fedora/Arch supported for bootstrap deps)
 - Internet connection
-- **Root or sudo**: LXC/Proxmox containers are often root-only with no `sudo` package — that is supported. Non-root hosts need `sudo`.
+- **Root or sudo**: LXC/Proxmox containers are often root-only with no `sudo` package — that is supported. Non-root hosts need `sudo` (bootstrap can install it when you already have privilege).
 
-**LXC / Debian 13 (trixie):** Run inside the container as root, e.g. `lxc exec <name> -- bash` or `pct exec <vmid> -- bash`. Minimal templates without `git` or `sudo` are OK; bootstrap installs deps via `apt` and can fall back to a curl tarball download.
+**Bootstrap auto-installs (before `main.sh` runs):** `bash`, `curl`, `tar`, `ca-certificates`, and `sudo` (non-root only). `git` is installed when possible; if missing, bootstrap downloads the repo via `curl` + GitHub tarball.
+
+**LXC / Debian 13 (trixie):** Run inside the container as root, e.g. `lxc exec <name> -- bash` or `pct exec <vmid> -- bash`. Minimal templates without `git`, `sudo`, or `curl` are OK — bootstrap runs `apt` non-interactively as root and does not require `sudo` in the container.
+
+You can still use `wget` instead of `curl` to fetch `bootstrap.sh` yourself; the script will install `curl` if needed for the repo download path.
 
 ### One-Line Installation
 
@@ -132,7 +135,7 @@ hyper-init/
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    bootstrap.sh                         │
-│  • Ensures git/curl are installed                       │
+│  • Ensures bootstrap deps (curl, tar, git, …)           │
 │  • Clones repository to ~/.hyper-init                   │
 │  • Launches main.sh                                     │
 └────────────────────┬────────────────────────────────────┘

@@ -23,6 +23,7 @@ _debug_log() {
 }
 # #endregion
 
+# Helpers below mirror lib/os.sh; bootstrap runs before the repo is cloned.
 run_privileged() {
     if [[ $EUID -eq 0 ]]; then
         "$@"
@@ -70,7 +71,9 @@ prepare_apt_noninteractive() {
 }
 
 apt_install() {
-    local pkg
+    if [[ $# -eq 0 ]]; then
+        return 0
+    fi
     prepare_apt_noninteractive
     if ! run_privileged apt-get update -qq; then
         echo "Error: apt-get update failed. Check /etc/apt/sources (Debian 13 uses deb822 .sources files)." >&2
@@ -79,65 +82,149 @@ apt_install() {
         # #endregion
         return 1
     fi
-    for pkg in "$@"; do
-        if ! run_privileged apt-get install -y \
-            -o Dpkg::Options::=--force-confdef \
-            -o Dpkg::Options::=--force-confold \
-            "$pkg"; then
-            echo "Error: apt-get install failed for: $pkg" >&2
-            return 1
-        fi
-    done
+    if ! run_privileged apt-get install -y \
+        -o Dpkg::Options::=--force-confdef \
+        -o Dpkg::Options::=--force-confold \
+        "$@"; then
+        echo "Error: apt-get install failed for: $*" >&2
+        return 1
+    fi
     return 0
 }
 
-install_dep() {
-    local dep="$1"
-    local in_container="false"
+debian_pkg_installed() {
+    dpkg -s "$1" &>/dev/null
+}
+
+bootstrap_can_privilege() {
+    [[ $EUID -eq 0 ]] || command -v sudo &>/dev/null
+}
+
+# Install all bootstrap prerequisites before fetch_repo / main.sh.
+# Required: bash, curl, tar, ca-certificates (Debian). Optional: git (tarball fallback).
+# sudo is installed only for non-root users; root/LXC does not need it.
+ensure_bootstrap_deps() {
+    local -a deb_pkgs=()
+    local cmd in_container="false"
+    local need_required_install=0
+    local git_was_missing=0
+
     is_container_env && in_container="true"
 
     # #region agent log
-    _debug_log "B" "bootstrap.sh:install_dep" "install_dep entry" \
-        "{\"dep\":\"$dep\",\"euid\":$EUID,\"has_sudo\":$(command -v sudo &>/dev/null && echo true || echo false),\"container\":$in_container,\"debian\":$(is_debian_family && echo true || echo false)}"
+    _debug_log "H" "bootstrap.sh:ensure_bootstrap_deps" "entry" \
+        "{\"euid\":$EUID,\"has_sudo\":$(command -v sudo &>/dev/null && echo true || echo false),\"container\":$in_container,\"debian\":$(is_debian_family && echo true || echo false)}"
     # #endregion
 
-    if command -v "$dep" &>/dev/null; then
+    if ! bootstrap_can_privilege; then
+        echo "Error: not running as root and sudo is not installed." >&2
+        echo "In LXC/Proxmox: exec into the container as root, e.g. lxc exec <name> -- bash" >&2
+        return 1
+    fi
+
+    for cmd in bash curl tar; do
+        if ! command -v "$cmd" &>/dev/null; then
+            need_required_install=1
+            break
+        fi
+    done
+
+    if [[ $EUID -ne 0 ]] && ! command -v sudo &>/dev/null; then
+        need_required_install=1
+    fi
+
+    if is_debian_family && ! debian_pkg_installed ca-certificates; then
+        need_required_install=1
+    fi
+
+    command -v git &>/dev/null || git_was_missing=1
+
+    if [[ $need_required_install -eq 0 && $git_was_missing -eq 0 ]]; then
+        # #region agent log
+        _debug_log "H" "bootstrap.sh:ensure_bootstrap_deps" "already satisfied" "{}"
+        # #endregion
         return 0
     fi
 
-    echo "$dep not found. Installing..."
+    echo "Checking bootstrap dependencies..."
 
     if is_debian_family; then
-        local pkgs=("$dep")
-        # HTTPS git clone and curl need CA store in minimal LXC templates
-        if [[ "$dep" == "git" || "$dep" == "curl" ]]; then
-            pkgs=(ca-certificates "${pkgs[@]}")
+        for cmd in bash curl tar; do
+            if ! command -v "$cmd" &>/dev/null; then
+                deb_pkgs+=("$cmd")
+            fi
+        done
+        if [[ $EUID -ne 0 ]] && ! command -v sudo &>/dev/null; then
+            deb_pkgs+=(sudo)
         fi
-        apt_install "${pkgs[@]}" || return 1
-    elif [ -f /etc/redhat-release ] || { [ -f /etc/os-release ] && . /etc/os-release && [[ "$ID" == "rhel" || "$ID" == "fedora" || "$ID" == "centos" || "$ID" == "rocky" || "$ID" == "almalinux" ]]; }; then
-        run_privileged dnf install -y "$dep" || return 1
-    elif [ -f /etc/arch-release ] || { [ -f /etc/os-release ] && . /etc/os-release && [[ "$ID" == "arch" ]]; }; then
-        run_privileged pacman -S --noconfirm "$dep" || return 1
-    else
-        echo "Error: unsupported OS; install $dep manually and re-run." >&2
-        # #region agent log
-        _debug_log "C" "bootstrap.sh:install_dep" "unsupported OS" "{\"dep\":\"$dep\"}"
-        # #endregion
-        return 1
+        if ! debian_pkg_installed ca-certificates; then
+            deb_pkgs+=(ca-certificates)
+        fi
+        if [[ ${#deb_pkgs[@]} -gt 0 ]]; then
+            echo "Installing: ${deb_pkgs[*]}"
+            apt_install "${deb_pkgs[@]}" || return 1
+        fi
+        for cmd in bash curl tar; do
+            if ! command -v "$cmd" &>/dev/null; then
+                echo "Error: required command missing after install: $cmd" >&2
+                # #region agent log
+                _debug_log "D" "bootstrap.sh:ensure_bootstrap_deps" "required still missing" "{\"cmd\":\"$cmd\"}"
+                # #endregion
+                return 1
+            fi
+        done
+        if [[ $EUID -ne 0 ]] && ! command -v sudo &>/dev/null; then
+            echo "Error: sudo is required for non-root installs but is still missing." >&2
+            return 1
+        fi
+        if [[ $git_was_missing -eq 1 ]] && ! command -v git &>/dev/null; then
+            echo "Installing git (optional, enables clone/update)..."
+            apt_install git || {
+                echo "Warning: git could not be installed; will try curl tarball fallback."
+                # #region agent log
+                _debug_log "G" "bootstrap.sh:ensure_bootstrap_deps" "git optional install failed" "{}"
+                # #endregion
+            }
+        fi
+        return 0
     fi
 
-    if ! command -v "$dep" &>/dev/null; then
-        echo "Error: failed to install $dep." >&2
-        # #region agent log
-        _debug_log "D" "bootstrap.sh:install_dep" "dep still missing after install" "{\"dep\":\"$dep\"}"
-        # #endregion
-        return 1
+    if [ -f /etc/redhat-release ] || { [ -f /etc/os-release ] && . /etc/os-release && [[ "$ID" == "rhel" || "$ID" == "fedora" || "$ID" == "centos" || "$ID" == "rocky" || "$ID" == "almalinux" ]]; }; then
+        local -a dnf_pkgs=()
+        for cmd in bash curl tar; do
+            command -v "$cmd" &>/dev/null || dnf_pkgs+=("$cmd")
+        done
+        [[ $EUID -ne 0 ]] && ! command -v sudo &>/dev/null && dnf_pkgs+=(sudo)
+        if [[ ${#dnf_pkgs[@]} -gt 0 ]]; then
+            echo "Installing: ${dnf_pkgs[*]}"
+            run_privileged dnf install -y "${dnf_pkgs[@]}" || return 1
+        fi
+        command -v git &>/dev/null || run_privileged dnf install -y git || \
+            echo "Warning: git could not be installed; will try curl tarball fallback."
+        return 0
     fi
 
+    if [ -f /etc/arch-release ] || { [ -f /etc/os-release ] && . /etc/os-release && [[ "$ID" == "arch" ]]; }; then
+        local -a pac_pkgs=()
+        for cmd in bash curl tar; do
+            command -v "$cmd" &>/dev/null || pac_pkgs+=("$cmd")
+        done
+        [[ $EUID -ne 0 ]] && ! command -v sudo &>/dev/null && pac_pkgs+=(sudo)
+        if [[ ${#pac_pkgs[@]} -gt 0 ]]; then
+            echo "Installing: ${pac_pkgs[*]}"
+            run_privileged pacman -S --noconfirm "${pac_pkgs[@]}" || return 1
+        fi
+        command -v git &>/dev/null || run_privileged pacman -S --noconfirm git || \
+            echo "Warning: git could not be installed; will try curl tarball fallback."
+        return 0
+    fi
+
+    echo "Error: unsupported OS for automatic bootstrap dependency install." >&2
+    echo "Install manually: bash curl tar ca-certificates git (optional) sudo (if non-root)" >&2
     # #region agent log
-    _debug_log "D" "bootstrap.sh:install_dep" "dep available" "{\"dep\":\"$dep\"}"
+    _debug_log "C" "bootstrap.sh:ensure_bootstrap_deps" "unsupported OS" "{}"
     # #endregion
-    return 0
+    return 1
 }
 
 fetch_repo() {
@@ -198,21 +285,11 @@ if is_container_env; then
     echo "Container environment detected (LXC/LXD/Docker)."
 fi
 
-# curl first (one-liner already needs it; ensure CA store on Debian)
-if ! install_dep curl; then
+if ! ensure_bootstrap_deps; then
     exit 1
 fi
 
-# git optional — tarball fallback if install fails
-if ! install_dep git; then
-    warn_git=1
-    echo "Warning: git could not be installed; will try curl tarball fallback."
-    # #region agent log
-    _debug_log "G" "bootstrap.sh:main" "git install skipped" "{}"
-    # #endregion
-else
-    warn_git=0
-fi
+command -v git &>/dev/null && warn_git=0 || warn_git=1
 
 if ! fetch_repo; then
     echo "Error: could not download HyperInit to $INSTALL_DIR" >&2
