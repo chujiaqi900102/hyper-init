@@ -5,8 +5,9 @@
 # Supports minimal LXC/Debian containers (root, no sudo, optional git).
 # ==============================================================================
 
-REPO_URL="https://github.com/chujiaqi900102/hyper-init.git"
-REPO_TARBALL="https://github.com/chujiaqi900102/hyper-init/archive/refs/heads/main.tar.gz"
+REPO_URL="${HYPER_INIT_REPO_URL:-https://github.com/chujiaqi900102/hyper-init.git}"
+REPO_TARBALL="${HYPER_INIT_REPO_TARBALL:-https://github.com/chujiaqi900102/hyper-init/archive/refs/heads/main.tar.gz}"
+REPO_BRANCH="${HYPER_INIT_REPO_BRANCH:-main}"
 INSTALL_DIR="$HOME/.hyper-init"
 
 # #region agent log
@@ -346,7 +347,7 @@ fetch_repo() {
 
     if command -v git &>/dev/null; then
         echo "Cloning HyperInit..."
-        git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
+        git clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR"
         return $?
     fi
 
@@ -365,9 +366,26 @@ fetch_repo() {
         return 1
     fi
     tar -xzf "$tmpdir/hyper-init.tar.gz" -C "$tmpdir"
-    extracted="$tmpdir/hyper-init-main"
-    if [ ! -d "$extracted" ]; then
-        echo "Error: unexpected archive layout from GitHub tarball." >&2
+    extracted=""
+    if [ -d "$tmpdir/hyper-init-main" ]; then
+        extracted="$tmpdir/hyper-init-main"
+    elif [ -f "$tmpdir/main.sh" ]; then
+        extracted="$tmpdir"
+    else
+        local d
+        for d in "$tmpdir"/*/; do
+            [ -d "$d" ] || continue
+            if [ -f "${d}main.sh" ]; then
+                if [ -n "$extracted" ]; then
+                    extracted=""
+                    break
+                fi
+                extracted="${d%/}"
+            fi
+        done
+    fi
+    if [ -z "$extracted" ] || [ ! -f "$extracted/main.sh" ]; then
+        echo "Error: unexpected archive layout (expected main.sh at archive root or in one top-level directory)." >&2
         rm -rf "$tmpdir"
         return 1
     fi
