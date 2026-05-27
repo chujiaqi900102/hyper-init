@@ -9,21 +9,95 @@ REPO_URL="${HYPER_INIT_REPO_URL:-https://github.com/chujiaqi900102/hyper-init.gi
 REPO_TARBALL="${HYPER_INIT_REPO_TARBALL:-https://github.com/chujiaqi900102/hyper-init/archive/refs/heads/main.tar.gz}"
 REPO_BRANCH="${HYPER_INIT_REPO_BRANCH:-main}"
 INSTALL_DIR="$HOME/.hyper-init"
+BOOTSTRAP_MODE="prod"   # prod = GitHub git clone; test = LAN tarball
+PREFER_TARBALL=0
 
-# #region agent log
-_debug_log() {
-    local hypothesis_id="$1" location="$2" message="$3" data_json="$4"
-    local ts log_path log_dir
-    ts=$(date +%s%3N 2>/dev/null || date +%s000)
-    log_path="${HYPER_INIT_DEBUG_LOG:-/tmp/hyper-init-debug-5b3cc3.log}"
-    log_dir=$(dirname "$log_path")
-    if [[ ! -d "$log_dir" || ! -w "$log_dir" ]]; then
-        log_path="/tmp/hyper-init-debug-5b3cc3.log"
-    fi
-    { printf '{"sessionId":"5b3cc3","hypothesisId":"%s","location":"%s","message":"%s","data":%s,"timestamp":%s}\n' \
-        "$hypothesis_id" "$location" "$message" "$data_json" "$ts"; } >> "$log_path" 2>/dev/null || true
+bootstrap_usage() {
+    cat <<'EOF'
+HyperInit bootstrap
+
+Usage:
+  bash bootstrap.sh              Production: clone/update from GitHub (default)
+  bash bootstrap.sh -t URL       Test/LAN: fetch repo tarball from local HTTP server
+  bash bootstrap.sh --test URL
+
+Examples:
+  bash bootstrap.sh
+  bash bootstrap.sh -t http://192.168.122.195:8888
+  bash bootstrap.sh -t 192.168.122.195:8888
+  wget -qO- http://LAN:8888/bootstrap.sh | bash -s -- -t http://LAN:8888
+
+Environment (optional overrides):
+  HYPER_INIT_SERVE_BASE, HYPER_INIT_REPO_TARBALL, HYPER_INIT_REPO_URL,
+  HYPER_INIT_MIRROR_URL, HYPER_INIT_REPO_BRANCH, HYPER_INIT_GIT_HTTP_VERSION
+EOF
 }
-# #endregion
+
+normalize_serve_base() {
+    local base="$1"
+    case "$base" in
+        http://*|https://*) printf '%s' "${base%/}" ;;
+        *) printf 'http://%s' "${base%/}" ;;
+    esac
+}
+
+parse_bootstrap_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -t|--test)
+                BOOTSTRAP_MODE="test"
+                if [[ -n "${2:-}" && "$2" != -* ]]; then
+                    HYPER_INIT_SERVE_BASE="$(normalize_serve_base "$2")"
+                    shift
+                fi
+                ;;
+            -h|--help)
+                bootstrap_usage
+                exit 0
+                ;;
+            *)
+                echo "Error: unknown option: $1 (try --help)" >&2
+                exit 1
+                ;;
+        esac
+        shift
+    done
+}
+
+apply_repo_fetch_mode() {
+    # Env-based LAN overrides (work with or without -t).
+    if [[ -n "${HYPER_INIT_SERVE_BASE:-}" && -z "${HYPER_INIT_REPO_TARBALL:-}" ]]; then
+        REPO_TARBALL="$(normalize_serve_base "$HYPER_INIT_SERVE_BASE")/hyper-init-main.tar.gz"
+    fi
+    if [[ -n "${HYPER_INIT_REPO_TARBALL:-}" ]]; then
+        PREFER_TARBALL=1
+    elif [[ -n "${HYPER_INIT_SERVE_BASE:-}" ]]; then
+        PREFER_TARBALL=1
+    elif [[ "$BOOTSTRAP_MODE" == "test" ]]; then
+        PREFER_TARBALL=1
+        if [[ -z "${HYPER_INIT_REPO_TARBALL:-}" && -z "${HYPER_INIT_SERVE_BASE:-}" ]]; then
+            echo "Error: test mode (-t) requires a serve base URL." >&2
+            echo "  Example: bash bootstrap.sh -t http://192.168.122.195:8888" >&2
+            echo "  Or:     export HYPER_INIT_SERVE_BASE=http://LAN_HOST:8888" >&2
+            exit 1
+        fi
+    fi
+}
+
+parse_bootstrap_args "$@"
+apply_repo_fetch_mode
+
+_debug_log() {
+    [[ -n "${HYPER_INIT_DEBUG_LOG:-}" ]] || return 0
+    local hypothesis_id="$1" location="$2" message="$3" data_json="$4"
+    local ts
+    ts=$(date +%s%3N 2>/dev/null || date +%s000)
+    { printf '{"hypothesisId":"%s","location":"%s","message":"%s","data":%s,"timestamp":%s}\n' \
+        "$hypothesis_id" "$location" "$message" "$data_json" "$ts"; } >> "$HYPER_INIT_DEBUG_LOG" 2>/dev/null || true
+}
+
+# Prefer HTTP/1.1 for GitHub fetches (avoids "Error in the HTTP2 framing layer" on some networks).
+GIT_FETCH_HTTP_VERSION="${HYPER_INIT_GIT_HTTP_VERSION:-HTTP/1.1}"
 
 # Non-interactive mirror for bootstrap apt (override with HYPER_INIT_MIRROR_URL).
 BOOTSTRAP_MIRROR_URL="${HYPER_INIT_MIRROR_URL:-https://mirrors.tuna.tsinghua.edu.cn}"
@@ -333,35 +407,24 @@ ensure_bootstrap_deps() {
     return 1
 }
 
-fetch_repo() {
-    if [ -d "$INSTALL_DIR/.git" ] && command -v git &>/dev/null; then
-        echo "Updating existing installation..."
-        git -C "$INSTALL_DIR" pull
-        return $?
-    fi
-
-    if [ -d "$INSTALL_DIR" ]; then
-        echo "Using existing installation at $INSTALL_DIR"
-        return 0
-    fi
-
-    if command -v git &>/dev/null; then
-        echo "Cloning HyperInit..."
-        git clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR"
-        return $?
-    fi
-
+fetch_repo_tarball() {
     if ! command -v curl &>/dev/null; then
-        echo "Error: neither git nor curl available to download HyperInit." >&2
+        echo "Error: curl is required to download HyperInit tarball." >&2
         return 1
     fi
 
-    echo "Fetching HyperInit via curl (git unavailable)..."
+    echo "Fetching HyperInit via curl from $REPO_TARBALL ..."
     local tmpdir parent extracted
     tmpdir=$(mktemp -d)
     parent=$(dirname "$INSTALL_DIR")
     mkdir -p "$parent"
-    if ! curl -fsSL "$REPO_TARBALL" -o "$tmpdir/hyper-init.tar.gz"; then
+    # #region agent log
+    _debug_log "C" "bootstrap.sh:fetch_repo_tarball" "curl tarball start" "{\"url\":\"$REPO_TARBALL\"}"
+    # #endregion
+    if ! curl -fsSL --http1.1 --connect-timeout 15 --max-time 300 "$REPO_TARBALL" -o "$tmpdir/hyper-init.tar.gz"; then
+        # #region agent log
+        _debug_log "C" "bootstrap.sh:fetch_repo_tarball" "curl tarball failed" "{\"url\":\"$REPO_TARBALL\"}"
+        # #endregion
         rm -rf "$tmpdir"
         return 1
     fi
@@ -392,16 +455,90 @@ fetch_repo() {
     mv "$extracted" "$INSTALL_DIR"
     rm -rf "$tmpdir"
     # #region agent log
-    _debug_log "G" "bootstrap.sh:fetch_repo" "fetched via tarball" "{\"install_dir\":\"$INSTALL_DIR\"}"
+    _debug_log "G" "bootstrap.sh:fetch_repo_tarball" "fetched via tarball" "{\"install_dir\":\"$INSTALL_DIR\"}"
     # #endregion
     return 0
 }
 
+git_fetch_cmd() {
+    env GIT_TERMINAL_PROMPT=0 git \
+        -c "http.version=$GIT_FETCH_HTTP_VERSION" \
+        -c http.lowSpeedLimit=1000 \
+        -c http.lowSpeedTime=30 \
+        "$@"
+}
+
+cleanup_failed_install_dir() {
+    if [[ -d "$INSTALL_DIR" && ! -d "$INSTALL_DIR/.git" ]]; then
+        rm -rf "$INSTALL_DIR"
+        # #region agent log
+        _debug_log "D" "bootstrap.sh:cleanup_failed_install_dir" "removed partial install dir" "{\"install_dir\":\"$INSTALL_DIR\"}"
+        # #endregion
+    fi
+}
+
+fetch_repo() {
+    if [ -d "$INSTALL_DIR/.git" ] && command -v git &>/dev/null; then
+        echo "Updating existing installation..."
+        if git_fetch_cmd -C "$INSTALL_DIR" pull; then
+            return 0
+        fi
+        echo "Warning: git pull failed; trying tarball fallback..." >&2
+        # #region agent log
+        _debug_log "A" "bootstrap.sh:fetch_repo" "git pull failed, tarball fallback" "{\"install_dir\":\"$INSTALL_DIR\"}"
+        # #endregion
+        rm -rf "$INSTALL_DIR"
+        fetch_repo_tarball
+        return $?
+    fi
+
+    if [ -d "$INSTALL_DIR" ]; then
+        echo "Using existing installation at $INSTALL_DIR"
+        return 0
+    fi
+
+    if [[ $PREFER_TARBALL -eq 1 ]]; then
+        fetch_repo_tarball
+        return $?
+    fi
+
+    if command -v git &>/dev/null; then
+        echo "Cloning HyperInit from $REPO_URL (branch $REPO_BRANCH)..."
+        if [[ "$REPO_URL" == *github.com* ]]; then
+            echo "Tip: for LAN testing use: bash bootstrap.sh -t http://LAN_HOST:8888"
+        fi
+        # #region agent log
+        _debug_log "A" "bootstrap.sh:fetch_repo" "git clone attempt" \
+            "{\"repo_url\":\"$REPO_URL\",\"branch\":\"$REPO_BRANCH\",\"http_version\":\"$GIT_FETCH_HTTP_VERSION\"}"
+        # #endregion
+        if git_fetch_cmd clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR"; then
+            # #region agent log
+            _debug_log "A" "bootstrap.sh:fetch_repo" "git clone ok" "{\"install_dir\":\"$INSTALL_DIR\"}"
+            # #endregion
+            return 0
+        fi
+        # #region agent log
+        _debug_log "B" "bootstrap.sh:fetch_repo" "git clone failed" "{\"install_dir\":\"$INSTALL_DIR\"}"
+        # #endregion
+        cleanup_failed_install_dir
+        echo "Warning: git clone failed; trying tarball fallback..." >&2
+        fetch_repo_tarball
+        return $?
+    fi
+
+    fetch_repo_tarball
+}
+
 echo "Initializing HyperInit..."
+if [[ "$BOOTSTRAP_MODE" == "test" ]]; then
+    echo "Mode: test (LAN tarball from $REPO_TARBALL)"
+else
+    echo "Mode: production (GitHub)"
+fi
 
 # #region agent log
 _debug_log "A" "bootstrap.sh:main" "bootstrap start" \
-    "{\"euid\":$EUID,\"has_sudo\":$(command -v sudo &>/dev/null && echo true || echo false),\"install_dir\":\"$INSTALL_DIR\",\"container\":$(is_container_env && echo true || echo false)}"
+    "{\"euid\":$EUID,\"mode\":\"$BOOTSTRAP_MODE\",\"prefer_tarball\":$PREFER_TARBALL,\"has_sudo\":$(command -v sudo &>/dev/null && echo true || echo false),\"install_dir\":\"$INSTALL_DIR\",\"container\":$(is_container_env && echo true || echo false)}"
 # #endregion
 
 if is_container_env; then

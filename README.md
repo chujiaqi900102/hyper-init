@@ -80,7 +80,7 @@
 - Internet connection
 - **Root or sudo**: LXC/Proxmox containers are often root-only with no `sudo` package — that is supported. Non-root hosts need `sudo` (bootstrap can install it when you already have privilege).
 
-**Bootstrap auto-installs (before `main.sh` runs):** `bash`, `curl`, `tar`, `ca-certificates`, and `sudo` (non-root only). `git` is installed when possible; if missing, bootstrap downloads the repo via `curl` + GitHub tarball.
+**Bootstrap auto-installs (before `main.sh` runs):** `bash`, `curl`, `tar`, `ca-certificates`, and `sudo` (non-root only). `git` is installed when possible; if clone fails (e.g. HTTP/2 errors on some networks) or `git` is missing, bootstrap falls back to downloading the repo via `curl` + GitHub tarball.
 
 **LXC / Debian 13 (trixie):** Run inside the container as root, e.g. `lxc exec <name> -- bash` or `pct exec <vmid> -- bash`. Minimal templates without `git`, `sudo`, or `curl` are OK — bootstrap runs `apt` non-interactively as root and does not require `sudo` in the container.
 
@@ -113,14 +113,29 @@ bash main.sh
 
 Use this workflow to exercise bootstrap and `main.sh` against a checkout on your LAN (for example an LXC guest without `git`, or before pushing to GitHub).
 
-**Bootstrap environment variables** (unset = default GitHub `main` flow):
+**Bootstrap modes**
+
+| Invocation | Repo source |
+|------------|-------------|
+| `bash bootstrap.sh` (no flags) | **Production:** `git clone` from GitHub (tarball fallback if clone fails) |
+| `bash bootstrap.sh -t http://LAN_HOST:8888` | **Test:** `curl` tarball from your LAN HTTP server |
+
+Shorthand: `-t 192.168.1.10:8888` is expanded to `http://192.168.1.10:8888`.
+
+When piping from `wget`, pass flags to bash: `wget -qO- .../bootstrap.sh | bash -s -- -t http://LAN_HOST:8888`
+
+**Bootstrap environment variables** (optional overrides; production defaults to GitHub):
 
 | Variable | Purpose |
 |----------|---------|
-| `HYPER_INIT_REPO_URL` | Git clone URL when `git` is available |
-| `HYPER_INIT_REPO_TARBALL` | `curl` download URL when `git` is missing or for forced tarball path |
+| `HYPER_INIT_REPO_URL` | Git clone URL when `git` is available (production) |
+| `HYPER_INIT_REPO_TARBALL` | `curl` tarball URL; forces tarball fetch when set |
+| `HYPER_INIT_SERVE_BASE` | LAN base URL → `.../hyper-init-main.tar.gz` (alternative to `-t URL`) |
 | `HYPER_INIT_REPO_BRANCH` | Branch for `git clone` (default `main`) |
-| `HYPER_INIT_MIRROR_URL` | APT mirror base during bootstrap `apt-get` (default Tsinghua); e.g. `https://mirrors.tuna.tsinghua.edu.cn` |
+| `HYPER_INIT_GIT_HTTP_VERSION` | Git HTTP version for clone/pull (default `HTTP/1.1`; avoids HTTP/2 framing errors) |
+| `HYPER_INIT_MIRROR_URL` | APT mirror base during bootstrap `apt-get` (default Tsinghua) |
+
+`HYPER_INIT_MIRROR_URL` only affects APT during bootstrap, not repo download.
 
 **1. Host: build and serve a tarball**
 
@@ -135,27 +150,29 @@ python3 -m http.server 8888
 
 The `--prefix=hyper-init-main/` layout matches GitHub’s archive naming; bootstrap also accepts a flat `git archive` (no prefix) or a single top-level directory that contains `main.sh`.
 
-**2. Container: wget bootstrap and run with local tarball**
+**2. Container: wget bootstrap and run in test mode**
 
-Inside the LXC guest as root (replace `LAN_HOST` and container access to match your setup):
+Inside the LXC guest as root (replace `LAN_HOST`):
 
 ```bash
-export HYPER_INIT_REPO_TARBALL=http://LAN_HOST:8888/hyper-init-main.tar.gz
-# Optional: faster APT during bootstrap on a slow uplink
-export HYPER_INIT_MIRROR_URL=https://mirrors.tuna.tsinghua.edu.cn
+export HYPER_INIT_MIRROR_URL=https://mirrors.tuna.tsinghua.edu.cn   # optional, APT only
 
-wget -qO- http://LAN_HOST:8888/bootstrap.sh | bash
-# Or fetch bootstrap from GitHub but only override the repo tarball:
-# export HYPER_INIT_REPO_TARBALL=http://LAN_HOST:8888/hyper-init-main.tar.gz
-# wget -qO- https://raw.githubusercontent.com/chujiaqi900102/hyper-init/main/bootstrap.sh | bash
+# Test mode: fetch repo tarball from LAN (not GitHub)
+wget -qO- http://LAN_HOST:8888/bootstrap.sh | bash -s -- -t http://LAN_HOST:8888
+# Or:
+bash <(wget -qO- http://LAN_HOST:8888/bootstrap.sh) -t http://LAN_HOST:8888
+```
+
+Production (GitHub) from the guest — no `-t`:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/chujiaqi900102/hyper-init/main/bootstrap.sh)
 ```
 
 Example with placeholder IPs:
 
 ```bash
-# Host 10.143.89.1 serves repo; guest uses wget-only bootstrap
-export HYPER_INIT_REPO_TARBALL=http://10.143.89.1:8888/hyper-init-main.tar.gz
-wget -qO- http://10.143.89.1:8888/bootstrap.sh | bash
+wget -qO- http://10.143.89.1:8888/bootstrap.sh | bash -s -- -t http://10.143.89.1:8888
 ```
 
 **3. Pre-seed `~/.hyper-init` (skip download)**
